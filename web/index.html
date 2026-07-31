@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -13,7 +13,7 @@
         content="#080c12"
     >
 
-    <title>ANYA</title>
+    <title>A.N.Y.A</title>
 
     <link
         rel="stylesheet"
@@ -22,61 +22,165 @@
 </head>
 
 <body>
-    <main class="app-shell">
-        <header class="app-header">
-            <div class="brand">
-                <img
-                    class="anya-logo"
-                    src="/static/anya-logo.png"
-                    alt="ANYA logo"
-                >
-
-                <div>
-                    <h1>A.N.Y.A</h1>
-                    <p>Autonomous Neural savvY Assistant</p>
-                </div>
-            </div>
-
-            <div
-                id="connection-status"
-                class="status-badge offline"
-            >
-                Offline
-            </div>
-        </header>
-
-        <section
-            id="messages"
-            class="messages"
-            aria-live="polite"
+    <div class="app-layout">
+        <aside
+            id="sidebar"
+            class="sidebar"
+            aria-label="Projects and chat history"
         >
-            <article class="message assistant-message">
-                <div class="message-label">ANYA</div>
+            <div class="sidebar-header">
+                <div class="sidebar-brand">
+                    <img
+                        src="/static/anya-logo.png"
+                        alt="A.N.Y.A logo"
+                    >
 
-                <div class="message-content">
-                    Good day, Shrish. Systems are ready.
+                    <div>
+                        <strong>A.N.Y.A</strong>
+                        <span>Workspace</span>
+                    </div>
                 </div>
-            </article>
-        </section>
 
-        <section class="input-panel">
-            <textarea
-                id="message-input"
-                rows="1"
-                maxlength="20000"
-                placeholder="Message ANYA..."
-                aria-label="Message ANYA"
-            ></textarea>
+                <button
+                    id="sidebar-close"
+                    class="icon-button sidebar-close"
+                    type="button"
+                    aria-label="Close sidebar"
+                >
+                    ×
+                </button>
+            </div>
 
             <button
-                id="send-button"
+                id="new-project-button"
+                class="sidebar-action"
                 type="button"
-                aria-label="Send message"
             >
-                Send
+                + New Project
             </button>
-        </section>
-    </main>
+
+            <section class="sidebar-section">
+                <div class="sidebar-section-header">
+                    <h2>Projects</h2>
+                </div>
+
+                <div
+                    id="project-list"
+                    class="sidebar-list"
+                >
+                    <button
+                        class="sidebar-item active"
+                        type="button"
+                        data-project-id=""
+                    >
+                        All Chats
+                    </button>
+                </div>
+            </section>
+
+            <button
+                id="new-chat-button"
+                class="sidebar-action secondary"
+                type="button"
+            >
+                + New Chat
+            </button>
+
+            <section class="sidebar-section chat-section">
+                <div class="sidebar-section-header">
+                    <h2>Chat History</h2>
+                </div>
+
+                <div
+                    id="chat-list"
+                    class="sidebar-list"
+                >
+                    <p class="sidebar-empty">
+                        No saved chats yet.
+                    </p>
+                </div>
+            </section>
+        </aside>
+
+        <button
+            id="sidebar-overlay"
+            class="sidebar-overlay"
+            type="button"
+            aria-label="Close sidebar"
+        ></button>
+
+        <main class="app-shell">
+            <header class="app-header">
+                <div class="header-left">
+                    <button
+                        id="sidebar-toggle"
+                        class="icon-button menu-button"
+                        type="button"
+                        aria-label="Open sidebar"
+                    >
+                        ☰
+                    </button>
+
+                    <div class="brand">
+                        <img
+                            class="anya-logo"
+                            src="/static/anya-logo.png"
+                            alt="A.N.Y.A logo"
+                        >
+
+                        <div>
+                            <h1>A.N.Y.A</h1>
+
+                            <p id="current-project-name">
+                                All Chats
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <div
+                    id="connection-status"
+                    class="status-badge offline"
+                >
+                    Offline
+                </div>
+            </header>
+
+            <section
+                id="messages"
+                class="messages"
+                aria-live="polite"
+            >
+                <article class="message assistant-message">
+                    <div class="message-label">
+                        A.N.Y.A
+                    </div>
+
+                    <div class="message-content">
+                        Good day, Shrish. Systems are ready.
+                    </div>
+                </article>
+            </section>
+
+            <section class="input-panel">
+                <textarea
+                    id="message-input"
+                    rows="1"
+                    maxlength="20000"
+                    placeholder="Message A.N.Y.A..."
+                    aria-label="Message A.N.Y.A"
+                ></textarea>
+
+                <button
+                    id="send-button"
+                    type="button"
+                    aria-label="Send message"
+                >
+                    Send
+                </button>
+            </section>
+        </main>
+    </div>
 
     <script src="/static/app.js"></script>
 </body>
