@@ -255,3 +255,271 @@ textarea {
         height: 48px;
     }
 }
+
+/* Projects and chat-history layout */
+
+.app-layout {
+    display: grid;
+    grid-template-columns: 300px minmax(0, 1fr);
+    width: 100%;
+    min-height: 100dvh;
+}
+
+.app-layout .app-shell {
+    width: 100%;
+    max-width: 1100px;
+    min-width: 0;
+    margin: 0 auto;
+}
+
+.sidebar {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+
+    height: 100dvh;
+    padding: 18px;
+
+    border-right: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(7, 12, 19, 0.96);
+    box-shadow: 12px 0 30px rgba(0, 0, 0, 0.18);
+}
+
+.sidebar-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.sidebar-brand {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.sidebar-brand img {
+    width: 44px;
+    height: 44px;
+    object-fit: contain;
+}
+
+.sidebar-brand strong,
+.sidebar-brand span {
+    display: block;
+}
+
+.sidebar-brand strong {
+    letter-spacing: 0.12em;
+}
+
+.sidebar-brand span {
+    margin-top: 2px;
+    color: #8fa1b8;
+    font-size: 0.78rem;
+}
+
+.sidebar-action {
+    width: 100%;
+    padding: 11px 14px;
+
+    border: 1px solid rgba(92, 169, 255, 0.35);
+    border-radius: 12px;
+
+    background: rgba(44, 106, 174, 0.22);
+    color: #dcecff;
+
+    font-weight: 700;
+    text-align: left;
+    cursor: pointer;
+}
+
+.sidebar-action:hover {
+    background: rgba(55, 126, 204, 0.32);
+}
+
+.sidebar-action.secondary {
+    border-color: rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.04);
+}
+
+.sidebar-section {
+    min-height: 0;
+}
+
+.sidebar-section.chat-section {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+}
+
+.sidebar-section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 6px 7px;
+}
+
+.sidebar-section-header h2 {
+    margin: 0;
+
+    color: #8fa1b8;
+    font-size: 0.72rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+}
+
+.sidebar-list {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+
+    min-height: 0;
+    overflow-y: auto;
+}
+
+.chat-section .sidebar-list {
+    flex: 1;
+}
+
+.sidebar-item {
+    width: 100%;
+    padding: 10px 12px;
+
+    overflow: hidden;
+
+    border: 1px solid transparent;
+    border-radius: 10px;
+
+    background: transparent;
+    color: #c8d5e6;
+
+    text-align: left;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+.sidebar-item:hover {
+    background: rgba(255, 255, 255, 0.055);
+}
+
+.sidebar-item.active {
+    border-color: rgba(93, 172, 255, 0.3);
+    background: rgba(52, 116, 190, 0.22);
+    color: #ffffff;
+}
+
+.sidebar-empty {
+    margin: 8px 10px;
+    color: #718197;
+    font-size: 0.85rem;
+}
+
+.header-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+}
+
+.icon-button {
+    display: grid;
+    place-items: center;
+
+    width: 40px;
+    height: 40px;
+    padding: 0;
+
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 11px;
+
+    background: rgba(255, 255, 255, 0.04);
+    color: #dce8f8;
+
+    font-size: 1.2rem;
+    cursor: pointer;
+}
+
+.icon-button:hover {
+    background: rgba(255, 255, 255, 0.09);
+}
+
+.menu-button,
+.sidebar-close,
+.sidebar-overlay {
+    display: none;
+}
+
+@media (max-width: 850px) {
+    .app-layout {
+        display: block;
+    }
+
+    .sidebar {
+        position: fixed;
+        z-index: 30;
+        inset: 0 auto 0 0;
+
+        width: min(86vw, 320px);
+
+        transform: translateX(-105%);
+        transition: transform 180ms ease;
+    }
+
+    body.sidebar-open .sidebar {
+        transform: translateX(0);
+    }
+
+    .menu-button,
+    .sidebar-close {
+        display: grid;
+    }
+
+    .sidebar-overlay {
+        position: fixed;
+        z-index: 20;
+        inset: 0;
+
+        width: 100%;
+        height: 100%;
+        border: 0;
+
+        background: rgba(0, 0, 0, 0.58);
+        opacity: 0;
+        pointer-events: none;
+
+        transition: opacity 180ms ease;
+    }
+
+    body.sidebar-open .sidebar-overlay {
+        display: block;
+        opacity: 1;
+        pointer-events: auto;
+    }
+
+    body.sidebar-open {
+        overflow: hidden;
+    }
+
+    .app-layout .app-shell {
+        max-width: 960px;
+    }
+}
+
+@media (max-width: 600px) {
+    .app-header h1 {
+        font-size: 1.35rem;
+    }
+
+    .app-header p {
+        max-width: 190px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .status-badge {
+        padding: 6px 9px;
+        font-size: 0.72rem;
+    }
+}

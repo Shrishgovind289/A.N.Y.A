@@ -16,3 +16,10 @@ __pycache__/
 Thumbs.db
 
 *_working
+
+# Runtime data
+data/*
+!data/.gitkeep
+
+projects/*
+!projects/.gitkeep

@@ -2,6 +2,7 @@ import logging
 import json
 import os
 import secrets
+from pathlib import Path
 from contextlib import asynccontextmanager
 from typing import Literal
 
@@ -11,11 +12,30 @@ from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
+
+
+BASE_DIR = Path(__file__).resolve().parent.parent
+ENV_PATH = Path(
+    os.getenv("ANYA_ENV_FILE", BASE_DIR / ".env")
+)
+WEB_DIR = Path(
+    os.getenv("ANYA_WEB_DIR", BASE_DIR / "web")
+)
+
+load_dotenv(ENV_PATH)
+
 from app.tools import get_server_status
 from app.agent_tools import TOOL_DEFINITIONS, execute_tool
-
-
-load_dotenv("/opt/anya/.env")
+from app.database import (
+    add_message,
+    create_chat,
+    create_project,
+    get_chat,
+    get_chat_messages,
+    initialize_database,
+    list_chats,
+    list_projects,
+)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -146,17 +166,42 @@ class ChatRequest(BaseModel):
         max_length=20_000,
     )
 
+    chat_id: str | None = None
+    project_id: str | None = None
+
     history: list[Message] = Field(
         default_factory=list,
     )
 
 
 class ChatResponse(BaseModel):
+    chat_id: str
     assistant: str
     model: str
     prompt_tokens: int | None = None
     response_tokens: int | None = None
     total_duration_ms: float | None = None
+
+
+class ProjectCreateRequest(BaseModel):
+    name: str = Field(
+        min_length=1,
+        max_length=100,
+    )
+
+    description: str = Field(
+        default="",
+        max_length=2_000,
+    )
+
+
+class ChatCreateRequest(BaseModel):
+    title: str = Field(
+        default="New Chat",
+        max_length=200,
+    )
+
+    project_id: str | None = None
 
 
 
@@ -187,6 +232,8 @@ async def verify_api_key(
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    initialize_database()
+
     timeout = httpx.Timeout(
         connect=10.0,
         read=300.0,
@@ -224,7 +271,7 @@ app = FastAPI(
 
 app.mount(
     "/static",
-    StaticFiles(directory="/opt/anya/web"),
+    StaticFiles(directory=str(WEB_DIR)),
     name="static",
 )
 
@@ -232,7 +279,7 @@ app.mount(
 @app.get("/")
 async def root():
     return FileResponse(
-        "/opt/anya/web/index.html"
+        str(WEB_DIR / "index.html")
     )
 
 
@@ -276,12 +323,146 @@ async def health():
         ) from exc
 
 
+@app.get(
+    "/api/projects",
+    dependencies=[Depends(verify_api_key)],
+)
+async def api_list_projects():
+    return {
+        "projects": list_projects(),
+    }
+
+
+@app.post(
+    "/api/projects",
+    dependencies=[Depends(verify_api_key)],
+)
+async def api_create_project(request: ProjectCreateRequest):
+    try:
+        return create_project(
+            name=request.name,
+            description=request.description,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=str(exc),
+        ) from exc
+
+
+@app.get(
+    "/api/chats",
+    dependencies=[Depends(verify_api_key)],
+)
+async def api_list_chats(
+    project_id: str | None = None,
+):
+    return {
+        "chats": list_chats(project_id),
+    }
+
+
+@app.post(
+    "/api/chats",
+    dependencies=[Depends(verify_api_key)],
+)
+async def api_create_chat(request: ChatCreateRequest):
+    try:
+        return create_chat(
+            title=request.title,
+            project_id=request.project_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=str(exc),
+        ) from exc
+
+
+@app.get(
+    "/api/chats/{chat_id}/messages",
+    dependencies=[Depends(verify_api_key)],
+)
+async def api_chat_messages(chat_id: str):
+    chat_record = get_chat(chat_id)
+
+    if chat_record is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Chat does not exist.",
+        )
+
+    return {
+        "chat": chat_record,
+        "messages": get_chat_messages(chat_id),
+    }
+
+
 @app.post(
     "/api/chat",
     response_model=ChatResponse,
     dependencies=[Depends(verify_api_key)],
 )
 async def chat(request: ChatRequest):
+    try:
+        if request.chat_id:
+            chat_record = get_chat(request.chat_id)
+
+            if chat_record is None:
+                raise HTTPException(
+                    status_code=404,
+                    detail="Chat does not exist.",
+                )
+
+            history_items = [
+                {
+                    "role": item["role"],
+                    "content": item["content"],
+                }
+                for item in get_chat_messages(
+                    request.chat_id
+                )
+                if item["role"] in {
+                    "user",
+                    "assistant",
+                }
+            ]
+        else:
+            title = " ".join(
+                request.message.split()
+            )
+
+            if len(title) > 60:
+                title = title[:57] + "..."
+
+            chat_record = create_chat(
+                title=title or "New Chat",
+                project_id=request.project_id,
+            )
+
+            history_items = [
+                {
+                    "role": item.role,
+                    "content": item.content,
+                }
+                for item in request.history[-20:]
+            ]
+
+            for item in history_items:
+                add_message(
+                    chat_record["id"],
+                    item["role"],
+                    item["content"],
+                )
+
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=str(exc),
+        ) from exc
+
+    chat_id = chat_record["id"]
+
     messages = [
         {
             "role": "system",
@@ -289,20 +470,20 @@ async def chat(request: ChatRequest):
         }
     ]
 
-    # Limit conversation history to prevent unrestricted prompt growth.
-    for item in request.history[-20:]:
-        messages.append(
-            {
-                "role": item.role,
-                "content": item.content,
-            }
-        )
+    for item in history_items[-20:]:
+        messages.append(item)
 
     messages.append(
         {
             "role": "user",
             "content": request.message,
         }
+    )
+
+    add_message(
+        chat_id,
+        "user",
+        request.message,
     )
 
     payload = {
@@ -479,7 +660,14 @@ async def chat(request: ChatRequest):
             ),
         )
 
+    add_message(
+        chat_id,
+        "assistant",
+        assistant_message,
+    )
+
     return ChatResponse(
+        chat_id=chat_id,
         assistant=assistant_message,
         model=response_model,
         prompt_tokens=prompt_tokens or None,
