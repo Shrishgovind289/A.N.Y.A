@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
+
+    <meta
+        name="theme-color"
+        content="#080c12"
+    >
+
+    <title>ANYA</title>
+
+    <link
+        rel="stylesheet"
+        href="/static/style.css"
+    >
+</head>
+
+<body>
+    <main class="app-shell">
+        <header class="app-header">
+            <div class="brand">
+                <img
+                    class="anya-logo"
+                    src="/static/anya-logo.png"
+                    alt="ANYA logo"
+                >
+
+                <div>
+                    <h1>A.N.Y.A</h1>
+                    <p>Autonomous Neural savvY Assistant</p>
+                </div>
+            </div>
+
+            <div
+                id="connection-status"
+                class="status-badge offline"
+            >
+                Offline
+            </div>
+        </header>
+
+        <section
+            id="messages"
+            class="messages"
+            aria-live="polite"
+        >
+            <article class="message assistant-message">
+                <div class="message-label">ANYA</div>
+
+                <div class="message-content">
+                    Good day, Shrish. Systems are ready.
+                </div>
+            </article>
+        </section>
+
+        <section class="input-panel">
+            <textarea
+                id="message-input"
+                rows="1"
+                maxlength="20000"
+                placeholder="Message ANYA..."
+                aria-label="Message ANYA"
+            ></textarea>
+
+            <button
+                id="send-button"
+                type="button"
+                aria-label="Send message"
+            >
+                Send
+            </button>
+        </section>
+    </main>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>
