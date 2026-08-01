@@ -31,8 +31,11 @@ const sidebarOverlay = document.getElementById(
 const projectFileInput = document.getElementById(
     "project-file-input"
 );
-const uploadFileButton = document.getElementById(
-    "upload-file-button"
+const attachFileButton = document.getElementById(
+    "attach-file-button"
+);
+const attachmentPreview = document.getElementById(
+    "attachment-preview"
 );
 const projectFileList = document.getElementById(
     "project-file-list"
@@ -46,6 +49,7 @@ let currentChatId = null;
 let projects = [];
 let chats = [];
 let projectFiles = [];
+let selectedFiles = [];
 let fileOperationInProgress = false;
 
 
@@ -214,6 +218,8 @@ function setRequestState(isLoading) {
         : "Send"
     );
 
+    updateAttachmentControls();
+
     if (!isLoading) {
         messageInput.focus();
     }
@@ -337,23 +343,79 @@ function formatFileSize(sizeBytes) {
 }
 
 
-function updateUploadButton() {
-    uploadFileButton.disabled = (
+function updateAttachmentControls() {
+    attachFileButton.disabled = (
         !selectedProjectId
         || fileOperationInProgress
+        || requestInProgress
     );
 
-    uploadFileButton.textContent = (
-        fileOperationInProgress
-        ? "Scanning..."
-        : "+ Upload File"
+    attachFileButton.title = (
+        selectedProjectId
+        ? "Attach files"
+        : "Select a project before attaching files"
     );
+}
+
+
+function renderAttachmentPreview() {
+    attachmentPreview.innerHTML = "";
+
+    if (selectedFiles.length === 0) {
+        attachmentPreview.hidden = true;
+        updateAttachmentControls();
+        return;
+    }
+
+    attachmentPreview.hidden = false;
+
+    selectedFiles.forEach(
+        (file, index) => {
+            const chip = document.createElement("div");
+            chip.className = "attachment-chip";
+
+            const name = document.createElement("span");
+            name.textContent = file.name;
+            name.title = file.name;
+
+            const removeButton = document.createElement(
+                "button"
+            );
+
+            removeButton.type = "button";
+            removeButton.className = (
+                "attachment-remove-button"
+            );
+            removeButton.textContent = "?";
+            removeButton.setAttribute(
+                "aria-label",
+                `Remove ${file.name}`
+            );
+
+            removeButton.addEventListener(
+                "click",
+                () => {
+                    selectedFiles.splice(index, 1);
+                    renderAttachmentPreview();
+                }
+            );
+
+            chip.append(
+                name,
+                removeButton
+            );
+
+            attachmentPreview.appendChild(chip);
+        }
+    );
+
+    updateAttachmentControls();
 }
 
 
 function renderProjectFiles() {
     projectFileList.innerHTML = "";
-    updateUploadButton();
+    updateAttachmentControls();
 
     if (!selectedProjectId) {
         const empty = document.createElement("p");
@@ -467,54 +529,91 @@ async function loadProjectFiles() {
 }
 
 
-async function uploadSelectedFile() {
-    const file = projectFileInput.files[0];
+function selectAttachmentFiles() {
+    if (!selectedProjectId) {
+        addMessage(
+            "assistant",
+            "Select a project before attaching files. "
+            + "Project attachments are stored in Resources."
+        );
 
-    if (
-        !file
-        || !selectedProjectId
-        || fileOperationInProgress
-    ) {
+        projectFileInput.value = "";
         return;
     }
 
-    const formData = new FormData();
-    formData.append("upload", file);
-    formData.append("description", "");
+    const incomingFiles = Array.from(
+        projectFileInput.files
+    );
+
+    for (const file of incomingFiles) {
+        const alreadySelected = selectedFiles.some(
+            (existingFile) => (
+                existingFile.name === file.name
+                && existingFile.size === file.size
+                && existingFile.lastModified
+                    === file.lastModified
+            )
+        );
+
+        if (!alreadySelected) {
+            selectedFiles.push(file);
+        }
+    }
+
+    projectFileInput.value = "";
+    renderAttachmentPreview();
+}
+
+
+async function uploadPendingFiles() {
+    if (selectedFiles.length === 0) {
+        return [];
+    }
+
+    if (!selectedProjectId) {
+        throw new Error(
+            "Select a project before uploading attachments."
+        );
+    }
 
     fileOperationInProgress = true;
-    updateUploadButton();
+    updateAttachmentControls();
+
+    const uploadedFiles = [];
 
     try {
-        await apiRequest(
-            `/api/projects/${
-                encodeURIComponent(selectedProjectId)
-            }/files`,
-            {
-                method: "POST",
-                body: formData,
-            }
-        );
+        for (const file of selectedFiles) {
+            const formData = new FormData();
+
+            formData.append(
+                "upload",
+                file
+            );
+
+            formData.append(
+                "description",
+                "Uploaded through chat"
+            );
+
+            const uploadedFile = await apiRequest(
+                `/api/projects/${
+                    encodeURIComponent(selectedProjectId)
+                }/files`,
+                {
+                    method: "POST",
+                    body: formData,
+                }
+            );
+
+            uploadedFiles.push(uploadedFile);
+        }
 
         await loadProjectFiles();
 
-        addMessage(
-            "assistant",
-            `${file.name} was scanned and stored successfully.`
-        );
-
-        setConnectionStatus(true);
-    } catch (error) {
-        addMessage(
-            "assistant",
-            `The file upload failed: ${error.message}`
-        );
-
-        setConnectionStatus(false);
+        return uploadedFiles;
     } finally {
         fileOperationInProgress = false;
-        projectFileInput.value = "";
-        updateUploadButton();
+        updateAttachmentControls();
     }
 }
 
@@ -645,6 +744,8 @@ async function selectProject(projectId, projectName) {
     selectedProjectId = projectId;
     selectedProjectLabel = projectName;
     currentChatId = null;
+    selectedFiles = [];
+    renderAttachmentPreview();
 
     currentProjectName.textContent = (
         selectedProjectLabel
@@ -760,6 +861,8 @@ async function createProject() {
 
 function startNewChat() {
     currentChatId = null;
+    selectedFiles = [];
+    renderAttachmentPreview();
     showWelcomeMessage();
     renderChats();
     closeSidebar();
@@ -801,18 +904,76 @@ async function initializeWorkspace() {
 
 async function sendMessage() {
     const message = messageInput.value.trim();
+    const hasAttachments = selectedFiles.length > 0;
 
-    if (!message || requestInProgress) {
+    if (
+        (!message && !hasAttachments)
+        || requestInProgress
+    ) {
         return;
     }
 
-    addMessage("user", message);
+    if (
+        hasAttachments
+        && !selectedProjectId
+    ) {
+        addMessage(
+            "assistant",
+            "Select a project before sending attachments."
+        );
+
+        return;
+    }
+
+    const attachmentNames = selectedFiles.map(
+        (file) => file.name
+    );
+
+    let displayedMessage = (
+        message
+        || "Attached project resources."
+    );
+
+    if (attachmentNames.length > 0) {
+        displayedMessage += (
+            "\n\nAttachments:\n- "
+            + attachmentNames.join("\n- ")
+        );
+    }
+
+    addMessage(
+        "user",
+        displayedMessage
+    );
 
     messageInput.value = "";
     resizeInput();
     setRequestState(true);
 
     try {
+        const uploadedFiles = await uploadPendingFiles();
+
+        let modelMessage = (
+            message
+            || "Please review the attached project resources."
+        );
+
+        if (uploadedFiles.length > 0) {
+            const resourceSummary = uploadedFiles.map(
+                (file) => (
+                    `- ${file.stored_name} `
+                    + `(${formatFileSize(file.size_bytes)}, `
+                    + `scan: ${file.scan_status}, `
+                    + `resource ID: ${file.id})`
+                )
+            );
+
+            modelMessage += (
+                "\n\nAttached project resources:\n"
+                + resourceSummary.join("\n")
+            );
+        }
+
         const data = await apiRequest(
             "/api/chat",
             {
@@ -822,7 +983,7 @@ async function sendMessage() {
                 },
                 body: JSON.stringify(
                     {
-                        message,
+                        message: modelMessage,
                         chat_id: currentChatId,
                         project_id: (
                             selectedProjectId
@@ -840,7 +1001,11 @@ async function sendMessage() {
             data.assistant
         );
 
+        selectedFiles = [];
+        renderAttachmentPreview();
+
         await loadChats();
+        await loadProjectFiles();
 
         setConnectionStatus(true);
     } catch (error) {
@@ -874,19 +1039,26 @@ newChatButton.addEventListener(
 );
 
 
-uploadFileButton.addEventListener(
+attachFileButton.addEventListener(
     "click",
     () => {
-        if (selectedProjectId) {
-            projectFileInput.click();
+        if (!selectedProjectId) {
+            addMessage(
+                "assistant",
+                "Select a project before attaching files."
+            );
+
+            return;
         }
+
+        projectFileInput.click();
     }
 );
 
 
 projectFileInput.addEventListener(
     "change",
-    uploadSelectedFile
+    selectAttachmentFiles
 );
 
 
