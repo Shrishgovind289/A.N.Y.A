@@ -17,7 +17,7 @@
 
     <link
         rel="stylesheet"
-        href="/static/style.css?v=3"
+        href="/static/style.css?v=4"
     >
 </head>
 
@@ -80,30 +80,15 @@
 
             <section class="sidebar-section file-section">
                 <div class="sidebar-section-header">
-                    <h2>Project Files</h2>
+                    <h2>Resources</h2>
                 </div>
-
-                <input
-                    id="project-file-input"
-                    type="file"
-                    hidden
-                >
-
-                <button
-                    id="upload-file-button"
-                    class="sidebar-action secondary"
-                    type="button"
-                    disabled
-                >
-                    + Upload File
-                </button>
 
                 <div
                     id="project-file-list"
                     class="sidebar-list file-list"
                 >
                     <p class="sidebar-empty">
-                        Select a project to manage files.
+                        Select a project to view resources.
                     </p>
                 </div>
             </section>
@@ -193,27 +178,50 @@
             </section>
 
             <section class="input-panel">
-                <textarea
-                    id="message-input"
-                    rows="1"
-                    maxlength="20000"
-                    placeholder="Message A.N.Y.A..."
-                    aria-label="Message A.N.Y.A"
-                ></textarea>
+                <div
+                    id="attachment-preview"
+                    class="attachment-preview"
+                    hidden
+                ></div>
 
-                <button
-                    id="send-button"
-                    type="button"
-                    aria-label="Send message"
-                >
-                    Send
-                </button>
+                <div class="composer-row">
+                    <input
+                        id="project-file-input"
+                        type="file"
+                        multiple
+                        hidden
+                    >
+
+                    <button
+                        id="attach-file-button"
+                        class="attach-file-button"
+                        type="button"
+                        aria-label="Attach files"
+                        title="Attach files"
+                    >
+                        ??
+                    </button>
+
+                    <textarea
+                        id="message-input"
+                        rows="1"
+                        maxlength="20000"
+                        placeholder="Message A.N.Y.A..."
+                        aria-label="Message A.N.Y.A"
+                    ></textarea>
+
+                    <button
+                        id="send-button"
+                        type="button"
+                        aria-label="Send message"
+                    >
+                        Send
+                    </button>
+                </div>
             </section>
         </main>
     </div>
 
-    <script src="/static/app.js?v=3"></script>
+    <script src="/static/app.js?v=4"></script>
 </body>
 </html>
-
-
