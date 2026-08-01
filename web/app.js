@@ -28,6 +28,16 @@ const sidebarOverlay = document.getElementById(
     "sidebar-overlay"
 );
 
+const projectFileInput = document.getElementById(
+    "project-file-input"
+);
+const uploadFileButton = document.getElementById(
+    "upload-file-button"
+);
+const projectFileList = document.getElementById(
+    "project-file-list"
+);
+
 let apiKey = sessionStorage.getItem("anya_api_key") || "";
 let requestInProgress = false;
 let selectedProjectId = "";
@@ -35,6 +45,8 @@ let selectedProjectLabel = "All Chats";
 let currentChatId = null;
 let projects = [];
 let chats = [];
+let projectFiles = [];
+let fileOperationInProgress = false;
 
 
 function requestApiKey() {
@@ -310,6 +322,301 @@ function renderChats() {
 }
 
 
+function formatFileSize(sizeBytes) {
+    if (sizeBytes < 1024) {
+        return `${sizeBytes} B`;
+    }
+
+    if (sizeBytes < 1024 * 1024) {
+        return `${(sizeBytes / 1024).toFixed(1)} KB`;
+    }
+
+    return `${(
+        sizeBytes / (1024 * 1024)
+    ).toFixed(1)} MB`;
+}
+
+
+function updateUploadButton() {
+    uploadFileButton.disabled = (
+        !selectedProjectId
+        || fileOperationInProgress
+    );
+
+    uploadFileButton.textContent = (
+        fileOperationInProgress
+        ? "Scanning..."
+        : "+ Upload File"
+    );
+}
+
+
+function renderProjectFiles() {
+    projectFileList.innerHTML = "";
+    updateUploadButton();
+
+    if (!selectedProjectId) {
+        const empty = document.createElement("p");
+
+        empty.className = "sidebar-empty";
+        empty.textContent = (
+            "Select a project to manage files."
+        );
+
+        projectFileList.appendChild(empty);
+        return;
+    }
+
+    if (projectFiles.length === 0) {
+        const empty = document.createElement("p");
+
+        empty.className = "sidebar-empty";
+        empty.textContent = "No uploaded files.";
+
+        projectFileList.appendChild(empty);
+        return;
+    }
+
+    for (const file of projectFiles) {
+        const item = document.createElement("div");
+        item.className = "project-file-item";
+
+        const name = document.createElement("div");
+        name.className = "project-file-name";
+        name.textContent = file.stored_name;
+        name.title = file.original_name;
+
+        const metadata = document.createElement("div");
+        metadata.className = "project-file-meta";
+
+        const scanStatus = document.createElement("span");
+        scanStatus.className = "project-file-status";
+        scanStatus.textContent = (
+            file.scan_status === "clean"
+            ? "Clean"
+            : file.scan_status
+        );
+
+        metadata.append(
+            `${formatFileSize(file.size_bytes)} ? `,
+            scanStatus
+        );
+
+        const actions = document.createElement("div");
+        actions.className = "project-file-actions";
+
+        const downloadButton = document.createElement(
+            "button"
+        );
+
+        downloadButton.type = "button";
+        downloadButton.className = "file-action-button";
+        downloadButton.textContent = "Download";
+
+        downloadButton.addEventListener(
+            "click",
+            () => downloadProjectFile(file)
+        );
+
+        const deleteButton = document.createElement(
+            "button"
+        );
+
+        deleteButton.type = "button";
+        deleteButton.className = (
+            "file-action-button delete"
+        );
+        deleteButton.textContent = "Delete";
+
+        deleteButton.addEventListener(
+            "click",
+            () => deleteProjectFile(file)
+        );
+
+        actions.append(
+            downloadButton,
+            deleteButton
+        );
+
+        item.append(
+            name,
+            metadata,
+            actions
+        );
+
+        projectFileList.appendChild(item);
+    }
+}
+
+
+async function loadProjectFiles() {
+    if (!selectedProjectId) {
+        projectFiles = [];
+        renderProjectFiles();
+        return;
+    }
+
+    const data = await apiRequest(
+        `/api/projects/${
+            encodeURIComponent(selectedProjectId)
+        }/files`
+    );
+
+    projectFiles = data.files || [];
+    renderProjectFiles();
+}
+
+
+async function uploadSelectedFile() {
+    const file = projectFileInput.files[0];
+
+    if (
+        !file
+        || !selectedProjectId
+        || fileOperationInProgress
+    ) {
+        return;
+    }
+
+    const formData = new FormData();
+    formData.append("upload", file);
+    formData.append("description", "");
+
+    fileOperationInProgress = true;
+    updateUploadButton();
+
+    try {
+        await apiRequest(
+            `/api/projects/${
+                encodeURIComponent(selectedProjectId)
+            }/files`,
+            {
+                method: "POST",
+                body: formData,
+            }
+        );
+
+        await loadProjectFiles();
+
+        addMessage(
+            "assistant",
+            `${file.name} was scanned and stored successfully.`
+        );
+
+        setConnectionStatus(true);
+    } catch (error) {
+        addMessage(
+            "assistant",
+            `The file upload failed: ${error.message}`
+        );
+
+        setConnectionStatus(false);
+    } finally {
+        fileOperationInProgress = false;
+        projectFileInput.value = "";
+        updateUploadButton();
+    }
+}
+
+
+async function downloadProjectFile(file) {
+    try {
+        if (!apiKey && !requestApiKey()) {
+            throw new Error(
+                "An API key is required."
+            );
+        }
+
+        const response = await fetch(
+            `/api/files/${
+                encodeURIComponent(file.id)
+            }/download`,
+            {
+                headers: {
+                    "X-API-Key": apiKey,
+                },
+            }
+        );
+
+        if (response.status === 401) {
+            sessionStorage.removeItem(
+                "anya_api_key"
+            );
+
+            apiKey = "";
+
+            throw new Error(
+                "The API key was rejected."
+            );
+        }
+
+        if (!response.ok) {
+            let detail = "Download failed.";
+
+            try {
+                const data = await response.json();
+                detail = data.detail || detail;
+            } catch {
+                // Keep the generic error.
+            }
+
+            throw new Error(detail);
+        }
+
+        const blob = await response.blob();
+        const objectUrl = URL.createObjectURL(blob);
+
+        const downloadLink = document.createElement("a");
+
+        downloadLink.href = objectUrl;
+        downloadLink.download = file.stored_name;
+
+        document.body.appendChild(downloadLink);
+        downloadLink.click();
+        downloadLink.remove();
+
+        URL.revokeObjectURL(objectUrl);
+    } catch (error) {
+        addMessage(
+            "assistant",
+            `The file download failed: ${error.message}`
+        );
+    }
+}
+
+
+async function deleteProjectFile(file) {
+    const confirmed = window.confirm(
+        `Delete "${file.stored_name}" permanently?`
+    );
+
+    if (!confirmed) {
+        return;
+    }
+
+    try {
+        await apiRequest(
+            `/api/files/${encodeURIComponent(file.id)}`,
+            {
+                method: "DELETE",
+            }
+        );
+
+        await loadProjectFiles();
+
+        addMessage(
+            "assistant",
+            `${file.stored_name} was deleted.`
+        );
+    } catch (error) {
+        addMessage(
+            "assistant",
+            `The file could not be deleted: ${error.message}`
+        );
+    }
+}
+
+
 async function loadProjects() {
     const data = await apiRequest(
         "/api/projects"
@@ -567,6 +874,22 @@ newChatButton.addEventListener(
 );
 
 
+uploadFileButton.addEventListener(
+    "click",
+    () => {
+        if (selectedProjectId) {
+            projectFileInput.click();
+        }
+    }
+);
+
+
+projectFileInput.addEventListener(
+    "change",
+    uploadSelectedFile
+);
+
+
 sidebarToggle.addEventListener(
     "click",
     openSidebar
@@ -611,6 +934,7 @@ window.addEventListener(
         await checkConnection();
         resizeInput();
         await initializeWorkspace();
+        renderProjectFiles();
         messageInput.focus();
     }
 );

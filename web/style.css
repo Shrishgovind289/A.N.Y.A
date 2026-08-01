@@ -523,3 +523,82 @@ textarea {
         font-size: 0.72rem;
     }
 }
+
+/* Project file storage */
+
+.file-section {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-height: 260px;
+}
+
+.file-list {
+    gap: 8px;
+    overflow-y: auto;
+}
+
+.project-file-item {
+    padding: 10px;
+
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 10px;
+
+    background: rgba(255, 255, 255, 0.035);
+}
+
+.project-file-name {
+    overflow: hidden;
+
+    color: #dce8f8;
+    font-size: 0.86rem;
+    font-weight: 600;
+
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.project-file-meta {
+    margin-top: 4px;
+
+    color: #8292a8;
+    font-size: 0.72rem;
+}
+
+.project-file-status {
+    color: #7dffb8;
+}
+
+.project-file-actions {
+    display: flex;
+    gap: 6px;
+    margin-top: 8px;
+}
+
+.file-action-button {
+    flex: 1;
+    padding: 6px 8px;
+
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+
+    background: rgba(255, 255, 255, 0.04);
+    color: #cbd8e8;
+
+    font-size: 0.72rem;
+    cursor: pointer;
+}
+
+.file-action-button:hover {
+    background: rgba(255, 255, 255, 0.09);
+}
+
+.file-action-button.delete {
+    border-color: rgba(255, 110, 110, 0.22);
+    color: #ffaaaa;
+}
+
+.sidebar-action:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}

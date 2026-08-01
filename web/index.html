@@ -17,7 +17,7 @@
 
     <link
         rel="stylesheet"
-        href="/static/style.css?v=2"
+        href="/static/style.css?v=3"
     >
 </head>
 
@@ -75,6 +75,36 @@
                     >
                         All Chats
                     </button>
+                </div>
+            </section>
+
+            <section class="sidebar-section file-section">
+                <div class="sidebar-section-header">
+                    <h2>Project Files</h2>
+                </div>
+
+                <input
+                    id="project-file-input"
+                    type="file"
+                    hidden
+                >
+
+                <button
+                    id="upload-file-button"
+                    class="sidebar-action secondary"
+                    type="button"
+                    disabled
+                >
+                    + Upload File
+                </button>
+
+                <div
+                    id="project-file-list"
+                    class="sidebar-list file-list"
+                >
+                    <p class="sidebar-empty">
+                        Select a project to manage files.
+                    </p>
                 </div>
             </section>
 
@@ -182,7 +212,8 @@
         </main>
     </div>
 
-    <script src="/static/app.js?v=2"></script>
+    <script src="/static/app.js?v=3"></script>
 </body>
 </html>
+
 
