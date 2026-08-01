@@ -2,6 +2,7 @@
 import re
 import sqlite3
 import uuid
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -17,7 +18,8 @@ def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def get_connection() -> sqlite3.Connection:
+@contextmanager
+def get_connection():
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     PROJECTS_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -26,7 +28,14 @@ def get_connection() -> sqlite3.Connection:
     connection.execute("PRAGMA foreign_keys = ON")
     connection.execute("PRAGMA journal_mode = WAL")
 
-    return connection
+    try:
+        yield connection
+        connection.commit()
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
 
 
 def initialize_database() -> None:
@@ -65,6 +74,28 @@ def initialize_database() -> None:
                     REFERENCES chats(id)
                     ON DELETE CASCADE
             );
+
+            CREATE TABLE IF NOT EXISTS project_files (
+                id TEXT PRIMARY KEY,
+                project_id TEXT NOT NULL,
+                original_name TEXT NOT NULL,
+                stored_name TEXT NOT NULL,
+                extension TEXT NOT NULL,
+                content_type TEXT NOT NULL,
+                size_bytes INTEGER NOT NULL,
+                sha256 TEXT NOT NULL,
+                scan_status TEXT NOT NULL,
+                scan_details TEXT NOT NULL DEFAULT '',
+                storage_path TEXT NOT NULL UNIQUE,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (project_id)
+                    REFERENCES projects(id)
+                    ON DELETE CASCADE
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_project_files_project_id
+                ON project_files(project_id);
+
 
             CREATE INDEX IF NOT EXISTS idx_chats_project_id
                 ON chats(project_id);
@@ -325,3 +356,116 @@ def get_chat_messages(chat_id: str) -> list[dict[str, Any]]:
         ).fetchall()
 
     return [dict(row) for row in rows]
+
+
+def create_file_record(
+    metadata: dict[str, Any],
+) -> dict[str, Any]:
+    timestamp = utc_now()
+
+    with get_connection() as connection:
+        connection.execute(
+            """
+            INSERT INTO project_files (
+                id,
+                project_id,
+                original_name,
+                stored_name,
+                extension,
+                content_type,
+                size_bytes,
+                sha256,
+                scan_status,
+                scan_details,
+                storage_path,
+                created_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                metadata["id"],
+                metadata["project_id"],
+                metadata["original_name"],
+                metadata["stored_name"],
+                metadata["extension"],
+                metadata["content_type"],
+                metadata["size_bytes"],
+                metadata["sha256"],
+                metadata["scan_status"],
+                metadata.get("scan_details", ""),
+                metadata["storage_path"],
+                timestamp,
+            ),
+        )
+
+    return get_file_record(metadata["id"])
+
+
+def get_file_record(
+    file_id: str,
+) -> dict[str, Any] | None:
+    with get_connection() as connection:
+        row = connection.execute(
+            """
+            SELECT
+                id,
+                project_id,
+                original_name,
+                stored_name,
+                extension,
+                content_type,
+                size_bytes,
+                sha256,
+                scan_status,
+                scan_details,
+                storage_path,
+                created_at
+            FROM project_files
+            WHERE id = ?
+            """,
+            (file_id,),
+        ).fetchone()
+
+    return dict(row) if row else None
+
+
+def list_project_files(
+    project_id: str,
+) -> list[dict[str, Any]]:
+    with get_connection() as connection:
+        rows = connection.execute(
+            """
+            SELECT
+                id,
+                project_id,
+                original_name,
+                stored_name,
+                extension,
+                content_type,
+                size_bytes,
+                sha256,
+                scan_status,
+                scan_details,
+                storage_path,
+                created_at
+            FROM project_files
+            WHERE project_id = ?
+            ORDER BY created_at DESC
+            """,
+            (project_id,),
+        ).fetchall()
+
+    return [dict(row) for row in rows]
+
+
+def delete_file_record(
+    file_id: str,
+) -> None:
+    with get_connection() as connection:
+        connection.execute(
+            """
+            DELETE FROM project_files
+            WHERE id = ?
+            """,
+            (file_id,),
+        )

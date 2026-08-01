@@ -5,3 +5,4 @@ python-dotenv
 psutil
 ddgs
 beautifulsoup4
+python-multipart

@@ -2,13 +2,23 @@ import logging
 import json
 import os
 import secrets
+import shutil
+import tempfile
 from pathlib import Path
 from contextlib import asynccontextmanager
 from typing import Literal
 
 import httpx
 from dotenv import load_dotenv
-from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi import (
+    Depends,
+    FastAPI,
+    File,
+    Form,
+    Header,
+    HTTPException,
+    UploadFile,
+)
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -32,10 +42,34 @@ from app.database import (
     create_project,
     get_chat,
     get_chat_messages,
+    get_file_record,
+    get_project,
     initialize_database,
+    create_file_record,
+    delete_file_record,
     list_chats,
     list_projects,
+    list_project_files,
 )
+
+from app.file_storage import (
+    MAX_UPLOAD_BYTES,
+    MalwareDetectedError,
+    ScannerUnavailableError,
+    UploadError,
+    store_scanned_file,
+)
+
+
+def public_file_record(
+    record: dict,
+) -> dict:
+    return {
+        key: value
+        for key, value in record.items()
+        if key != "storage_path"
+    }
+
 
 logging.basicConfig(
     level=logging.INFO,
@@ -321,6 +355,247 @@ async def health():
             status_code=503,
             detail=f"Ollama is unavailable: {exc}",
         ) from exc
+
+
+@app.get(
+    "/api/projects/{project_id}/files",
+    dependencies=[Depends(verify_api_key)],
+)
+async def api_list_project_files(
+    project_id: str,
+):
+    if get_project(project_id) is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Project does not exist.",
+        )
+
+    return {
+        "files": [
+            public_file_record(record)
+            for record in list_project_files(
+                project_id
+            )
+        ],
+    }
+
+
+@app.post(
+    "/api/projects/{project_id}/files",
+    dependencies=[Depends(verify_api_key)],
+)
+async def api_upload_project_file(
+    project_id: str,
+    upload: UploadFile = File(...),
+    description: str = Form(default=""),
+):
+    if get_project(project_id) is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Project does not exist.",
+        )
+
+    filename = upload.filename or ""
+    temporary_path: Path | None = None
+    stored_metadata: dict | None = None
+
+    try:
+        with tempfile.NamedTemporaryFile(
+            prefix="anya-upload-",
+            suffix=".tmp",
+            delete=False,
+        ) as temporary_file:
+            temporary_path = Path(
+                temporary_file.name
+            )
+
+            total_bytes = 0
+
+            while chunk := await upload.read(
+                1024 * 1024
+            ):
+                total_bytes += len(chunk)
+
+                if total_bytes > MAX_UPLOAD_BYTES:
+                    raise HTTPException(
+                        status_code=413,
+                        detail=(
+                            "The uploaded file exceeds "
+                            f"the {MAX_UPLOAD_BYTES}-byte limit."
+                        ),
+                    )
+
+                temporary_file.write(chunk)
+
+        stored_metadata = store_scanned_file(
+            project_id=project_id,
+            temporary_path=temporary_path,
+            original_filename=filename,
+            content_type=upload.content_type,
+        )
+
+        stored_metadata["description"] = (
+            description.strip()
+        )
+
+        try:
+            record = create_file_record(
+                stored_metadata
+            )
+        except Exception:
+            storage_path = Path(
+                stored_metadata["storage_path"]
+            )
+
+            shutil.rmtree(
+                storage_path.parent,
+                ignore_errors=True,
+            )
+
+            raise
+
+        return public_file_record(record)
+
+    except MalwareDetectedError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "The upload was rejected because "
+                f"malware was detected: {exc}"
+            ),
+        ) from exc
+
+    except ScannerUnavailableError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=str(exc),
+        ) from exc
+
+    except UploadError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=str(exc),
+        ) from exc
+
+    finally:
+        await upload.close()
+
+        if (
+            temporary_path is not None
+            and temporary_path.exists()
+        ):
+            temporary_path.unlink(
+                missing_ok=True
+            )
+
+
+@app.get(
+    "/api/files/{file_id}/download",
+    dependencies=[Depends(verify_api_key)],
+)
+async def api_download_project_file(
+    file_id: str,
+):
+    record = get_file_record(file_id)
+
+    if record is None:
+        raise HTTPException(
+            status_code=404,
+            detail="File does not exist.",
+        )
+
+    project = get_project(
+        record["project_id"]
+    )
+
+    if project is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Project does not exist.",
+        )
+
+    file_path = Path(
+        record["storage_path"]
+    ).resolve()
+
+    workspace_path = Path(
+        project["workspace_path"]
+    ).resolve()
+
+    if not file_path.is_relative_to(
+        workspace_path
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="Stored file path is invalid.",
+        )
+
+    if not file_path.is_file():
+        raise HTTPException(
+            status_code=404,
+            detail="Stored file is missing.",
+        )
+
+    return FileResponse(
+        path=str(file_path),
+        media_type=record["content_type"],
+        filename=record["stored_name"],
+    )
+
+
+@app.delete(
+    "/api/files/{file_id}",
+    dependencies=[Depends(verify_api_key)],
+)
+async def api_delete_project_file(
+    file_id: str,
+):
+    record = get_file_record(file_id)
+
+    if record is None:
+        raise HTTPException(
+            status_code=404,
+            detail="File does not exist.",
+        )
+
+    project = get_project(
+        record["project_id"]
+    )
+
+    if project is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Project does not exist.",
+        )
+
+    file_path = Path(
+        record["storage_path"]
+    ).resolve()
+
+    workspace_path = Path(
+        project["workspace_path"]
+    ).resolve()
+
+    if not file_path.is_relative_to(
+        workspace_path
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="Stored file path is invalid.",
+        )
+
+    if file_path.exists():
+        shutil.rmtree(
+            file_path.parent,
+            ignore_errors=True,
+        )
+
+    delete_file_record(file_id)
+
+    return {
+        "deleted": True,
+        "file_id": file_id,
+    }
 
 
 @app.get(
