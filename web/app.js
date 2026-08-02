@@ -190,6 +190,46 @@ function showWelcomeMessage() {
 }
 
 
+function renderMessageMath(element) {
+    if (
+        typeof window.renderMathInElement
+        !== "function"
+    ) {
+        return;
+    }
+
+    window.renderMathInElement(
+        element,
+        {
+            delimiters: [
+                {
+                    left: "$$",
+                    right: "$$",
+                    display: true,
+                },
+                {
+                    left: "\\[",
+                    right: "\\]",
+                    display: true,
+                },
+                {
+                    left: "\\(",
+                    right: "\\)",
+                    display: false,
+                },
+                {
+                    left: "$",
+                    right: "$",
+                    display: false,
+                },
+            ],
+            throwOnError: false,
+            strict: "ignore",
+        }
+    );
+}
+
+
 function addMessage(role, content) {
     const article = document.createElement("article");
 
@@ -215,6 +255,8 @@ function addMessage(role, content) {
     article.appendChild(messageContent);
 
     messagesContainer.appendChild(article);
+
+    renderMessageMath(messageContent);
 
     messagesContainer.scrollTop = (
         messagesContainer.scrollHeight
