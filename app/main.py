@@ -57,6 +57,11 @@ from app.database import (
     list_project_files,
 )
 
+from app.file_content import (
+    FileContentError,
+    extract_file_content,
+)
+
 from app.file_storage import (
     MAX_UPLOAD_BYTES,
     MalwareDetectedError,
@@ -74,6 +79,56 @@ def public_file_record(
         for key, value in record.items()
         if key != "storage_path"
     }
+
+
+MAX_ATTACHMENT_CONTEXT_CHARS = int(
+    os.getenv(
+        "ANYA_MAX_ATTACHMENT_CONTEXT_CHARS",
+        "24000",
+    )
+)
+
+
+def build_chat_attachment_context(
+    chat_id: str,
+) -> str:
+    sections: list[str] = []
+    remaining_characters = (
+        MAX_ATTACHMENT_CONTEXT_CHARS
+    )
+
+    for record in list_chat_files(chat_id):
+        filename = (
+            record.get("original_name")
+            or "attachment"
+        )
+
+        try:
+            content = extract_file_content(record)
+        except FileContentError as exc:
+            content = (
+                "[Attachment could not be read: "
+                f"{exc}]"
+            )
+
+        section = (
+            f"===== Attachment: {filename} =====\n"
+            f"{content}"
+        ).strip()
+
+        if len(section) > remaining_characters:
+            section = (
+                section[:remaining_characters].rstrip()
+                + "\n[Attachment context truncated]"
+            )
+
+        sections.append(section)
+        remaining_characters -= len(section)
+
+        if remaining_characters <= 0:
+            break
+
+    return "\n\n".join(sections)
 
 
 logging.basicConfig(
@@ -901,10 +956,27 @@ async def chat(request: ChatRequest):
     for item in history_items[-20:]:
         messages.append(item)
 
+    model_user_message = request.message
+
+    attachment_context = (
+        build_chat_attachment_context(chat_id)
+    )
+
+    if attachment_context:
+        model_user_message = (
+            f"{request.message}\n\n"
+            "The following text was extracted from "
+            "files attached to this chat. Use the "
+            "file contents as the primary source for "
+            "answering the request. Do not claim that "
+            "you cannot access the files.\n\n"
+            f"{attachment_context}"
+        )
+
     messages.append(
         {
             "role": "user",
-            "content": request.message,
+            "content": model_user_message,
         }
     )
 

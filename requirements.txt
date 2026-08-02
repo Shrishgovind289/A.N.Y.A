@@ -6,3 +6,4 @@ psutil
 ddgs
 beautifulsoup4
 python-multipart
+pypdf
