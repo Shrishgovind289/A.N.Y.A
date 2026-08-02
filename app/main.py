@@ -37,6 +37,7 @@ load_dotenv(ENV_PATH)
 from app.tools import get_server_status
 from app.agent_tools import TOOL_DEFINITIONS, execute_tool
 from app.database import (
+    CHAT_UPLOADS_DIR,
     add_message,
     create_chat,
     create_project,
@@ -47,6 +48,7 @@ from app.database import (
     initialize_database,
     create_file_record,
     delete_file_record,
+    list_chat_files,
     list_chats,
     list_projects,
     list_project_files,
@@ -380,21 +382,45 @@ async def api_list_project_files(
     }
 
 
-@app.post(
-    "/api/projects/{project_id}/files",
+@app.get(
+    "/api/chats/{chat_id}/files",
     dependencies=[Depends(verify_api_key)],
 )
-async def api_upload_project_file(
-    project_id: str,
+async def api_list_chat_files(
+    chat_id: str,
+):
+    if get_chat(chat_id) is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Chat does not exist.",
+        )
+
+    return {
+        "files": [
+            public_file_record(record)
+            for record in list_chat_files(chat_id)
+        ],
+    }
+
+
+@app.post(
+    "/api/chats/{chat_id}/files",
+    dependencies=[Depends(verify_api_key)],
+)
+async def api_upload_chat_file(
+    chat_id: str,
     upload: UploadFile = File(...),
     description: str = Form(default=""),
 ):
-    if get_project(project_id) is None:
+    chat_record = get_chat(chat_id)
+
+    if chat_record is None:
         raise HTTPException(
             status_code=404,
-            detail="Project does not exist.",
+            detail="Chat does not exist.",
         )
 
+    project_id = chat_record.get("project_id")
     filename = upload.filename or ""
     temporary_path: Path | None = None
     stored_metadata: dict | None = None
@@ -428,6 +454,7 @@ async def api_upload_project_file(
                 temporary_file.write(chunk)
 
         stored_metadata = store_scanned_file(
+            chat_id=chat_id,
             project_id=project_id,
             temporary_path=temporary_path,
             original_filename=filename,
@@ -489,11 +516,43 @@ async def api_upload_project_file(
             )
 
 
+def get_file_storage_root(
+    record: dict,
+) -> Path:
+    project_id = record.get("project_id")
+
+    if project_id:
+        project = get_project(project_id)
+
+        if project is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Project does not exist.",
+            )
+
+        return Path(
+            project["workspace_path"]
+        ).resolve()
+
+    chat_id = record.get("chat_id")
+
+    if not chat_id or get_chat(chat_id) is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Chat does not exist.",
+        )
+
+    return (
+        CHAT_UPLOADS_DIR
+        / chat_id
+    ).resolve()
+
+
 @app.get(
     "/api/files/{file_id}/download",
     dependencies=[Depends(verify_api_key)],
 )
-async def api_download_project_file(
+async def api_download_file(
     file_id: str,
 ):
     record = get_file_record(file_id)
@@ -504,26 +563,16 @@ async def api_download_project_file(
             detail="File does not exist.",
         )
 
-    project = get_project(
-        record["project_id"]
-    )
-
-    if project is None:
-        raise HTTPException(
-            status_code=404,
-            detail="Project does not exist.",
-        )
-
     file_path = Path(
         record["storage_path"]
     ).resolve()
 
-    workspace_path = Path(
-        project["workspace_path"]
-    ).resolve()
+    storage_root = get_file_storage_root(
+        record
+    )
 
     if not file_path.is_relative_to(
-        workspace_path
+        storage_root
     ):
         raise HTTPException(
             status_code=403,
@@ -547,7 +596,7 @@ async def api_download_project_file(
     "/api/files/{file_id}",
     dependencies=[Depends(verify_api_key)],
 )
-async def api_delete_project_file(
+async def api_delete_file(
     file_id: str,
 ):
     record = get_file_record(file_id)
@@ -558,26 +607,16 @@ async def api_delete_project_file(
             detail="File does not exist.",
         )
 
-    project = get_project(
-        record["project_id"]
-    )
-
-    if project is None:
-        raise HTTPException(
-            status_code=404,
-            detail="Project does not exist.",
-        )
-
     file_path = Path(
         record["storage_path"]
     ).resolve()
 
-    workspace_path = Path(
-        project["workspace_path"]
-    ).resolve()
+    storage_root = get_file_storage_root(
+        record
+    )
 
     if not file_path.is_relative_to(
-        workspace_path
+        storage_root
     ):
         raise HTTPException(
             status_code=403,

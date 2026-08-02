@@ -691,3 +691,10 @@ textarea {
 .attachment-remove-button:hover {
     background: rgba(255, 255, 255, 0.1);
 }
+
+.attach-file-button svg {
+    width: 1.3rem;
+    height: 1.3rem;
+    pointer-events: none;
+    stroke-width: 2;
+}

@@ -345,15 +345,14 @@ function formatFileSize(sizeBytes) {
 
 function updateAttachmentControls() {
     attachFileButton.disabled = (
-        !selectedProjectId
-        || fileOperationInProgress
+        fileOperationInProgress
         || requestInProgress
     );
 
     attachFileButton.title = (
         selectedProjectId
-        ? "Attach files"
-        : "Select a project before attaching files"
+        ? "Attach files and save them to project Resources"
+        : "Attach files to this chat"
     );
 }
 
@@ -386,7 +385,7 @@ function renderAttachmentPreview() {
             removeButton.className = (
                 "attachment-remove-button"
             );
-            removeButton.textContent = "?";
+            removeButton.textContent = "\u00d7";
             removeButton.setAttribute(
                 "aria-label",
                 `Remove ${file.name}`
@@ -530,17 +529,6 @@ async function loadProjectFiles() {
 
 
 function selectAttachmentFiles() {
-    if (!selectedProjectId) {
-        addMessage(
-            "assistant",
-            "Select a project before attaching files. "
-            + "Project attachments are stored in Resources."
-        );
-
-        projectFileInput.value = "";
-        return;
-    }
-
     const incomingFiles = Array.from(
         projectFileInput.files
     );
@@ -565,14 +553,58 @@ function selectAttachmentFiles() {
 }
 
 
-async function uploadPendingFiles() {
+async function ensureChatForAttachments(message) {
+    if (currentChatId) {
+        return currentChatId;
+    }
+
+    const attachmentTitle = selectedFiles
+        .map((file) => file.name)
+        .join(", ");
+
+    let title = (
+        message
+        || attachmentTitle
+        || "New Chat"
+    ).trim();
+
+    if (title.length > 60) {
+        title = title.slice(0, 57) + "...";
+    }
+
+    const chat = await apiRequest(
+        "/api/chats",
+        {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+            },
+            body: JSON.stringify(
+                {
+                    title,
+                    project_id: (
+                        selectedProjectId
+                        || null
+                    ),
+                }
+            ),
+        }
+    );
+
+    currentChatId = chat.id;
+
+    return currentChatId;
+}
+
+
+async function uploadPendingFiles(chatId) {
     if (selectedFiles.length === 0) {
         return [];
     }
 
-    if (!selectedProjectId) {
+    if (!chatId) {
         throw new Error(
-            "Select a project before uploading attachments."
+            "A chat must exist before attachments can upload."
         );
     }
 
@@ -592,12 +624,14 @@ async function uploadPendingFiles() {
 
             formData.append(
                 "description",
-                "Uploaded through chat"
+                selectedProjectId
+                    ? "Uploaded through project chat"
+                    : "Uploaded through chat"
             );
 
             const uploadedFile = await apiRequest(
-                `/api/projects/${
-                    encodeURIComponent(selectedProjectId)
+                `/api/chats/${
+                    encodeURIComponent(chatId)
                 }/files`,
                 {
                     method: "POST",
@@ -608,7 +642,9 @@ async function uploadPendingFiles() {
             uploadedFiles.push(uploadedFile);
         }
 
-        await loadProjectFiles();
+        if (selectedProjectId) {
+            await loadProjectFiles();
+        }
 
         return uploadedFiles;
     } finally {
@@ -913,25 +949,13 @@ async function sendMessage() {
         return;
     }
 
-    if (
-        hasAttachments
-        && !selectedProjectId
-    ) {
-        addMessage(
-            "assistant",
-            "Select a project before sending attachments."
-        );
-
-        return;
-    }
-
     const attachmentNames = selectedFiles.map(
         (file) => file.name
     );
 
     let displayedMessage = (
         message
-        || "Attached project resources."
+        || "Attached files."
     );
 
     if (attachmentNames.length > 0) {
@@ -951,26 +975,43 @@ async function sendMessage() {
     setRequestState(true);
 
     try {
-        const uploadedFiles = await uploadPendingFiles();
+        let uploadedFiles = [];
+
+        if (hasAttachments) {
+            const chatId = await ensureChatForAttachments(
+                message
+            );
+
+            uploadedFiles = await uploadPendingFiles(
+                chatId
+            );
+
+            selectedFiles = [];
+            renderAttachmentPreview();
+        }
 
         let modelMessage = (
             message
-            || "Please review the attached project resources."
+            || "Please review the attached files."
         );
 
         if (uploadedFiles.length > 0) {
-            const resourceSummary = uploadedFiles.map(
+            const attachmentSummary = uploadedFiles.map(
                 (file) => (
                     `- ${file.stored_name} `
                     + `(${formatFileSize(file.size_bytes)}, `
                     + `scan: ${file.scan_status}, `
-                    + `resource ID: ${file.id})`
+                    + `file ID: ${file.id})`
                 )
             );
 
+            const attachmentHeading = selectedProjectId
+                ? "Attached project resources:"
+                : "Attached chat files:";
+
             modelMessage += (
-                "\n\nAttached project resources:\n"
-                + resourceSummary.join("\n")
+                `\n\n${attachmentHeading}\n`
+                + attachmentSummary.join("\n")
             );
         }
 
@@ -1001,11 +1042,11 @@ async function sendMessage() {
             data.assistant
         );
 
-        selectedFiles = [];
-        renderAttachmentPreview();
-
         await loadChats();
-        await loadProjectFiles();
+
+        if (selectedProjectId) {
+            await loadProjectFiles();
+        }
 
         setConnectionStatus(true);
     } catch (error) {
@@ -1042,15 +1083,6 @@ newChatButton.addEventListener(
 attachFileButton.addEventListener(
     "click",
     () => {
-        if (!selectedProjectId) {
-            addMessage(
-                "assistant",
-                "Select a project before attaching files."
-            );
-
-            return;
-        }
-
         projectFileInput.click();
     }
 );
