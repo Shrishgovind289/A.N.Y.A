@@ -166,6 +166,24 @@ MAX_TOOL_ITERATIONS = int(
 )
 
 
+async def get_installed_model_names() -> list[str]:
+    response = await app.state.ollama.get(
+        f"{OLLAMA_URL}/api/tags"
+    )
+
+    response.raise_for_status()
+    data = response.json()
+
+    return sorted(
+        {
+            model["name"]
+            for model in data.get("models", [])
+            if isinstance(model.get("name"), str)
+            and model["name"].strip()
+        }
+    )
+
+
 SYSTEM_PROMPT = """
 You are ANYA, Shrishgovind's private local AI assistant.
 
@@ -262,6 +280,11 @@ class ChatRequest(BaseModel):
 
     chat_id: str | None = None
     project_id: str | None = None
+
+    model: str | None = Field(
+        default=None,
+        max_length=200,
+    )
 
     history: list[Message] = Field(
         default_factory=list,
@@ -415,6 +438,27 @@ async def health():
             status_code=503,
             detail=f"Ollama is unavailable: {exc}",
         ) from exc
+
+
+@app.get(
+    "/api/models",
+    dependencies=[Depends(verify_api_key)],
+)
+async def api_models():
+    try:
+        installed_models = (
+            await get_installed_model_names()
+        )
+    except httpx.HTTPError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Ollama is unavailable: {exc}",
+        ) from exc
+
+    return {
+        "default_model": ANYA_MODEL,
+        "models": installed_models,
+    }
 
 
 @app.get(
@@ -887,6 +931,30 @@ async def api_chat_messages(chat_id: str):
     dependencies=[Depends(verify_api_key)],
 )
 async def chat(request: ChatRequest):
+    selected_model = (
+        request.model
+        or ANYA_MODEL
+    ).strip()
+
+    try:
+        installed_models = (
+            await get_installed_model_names()
+        )
+    except httpx.HTTPError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Ollama is unavailable: {exc}",
+        ) from exc
+
+    if selected_model not in installed_models:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Model '{selected_model}' is not "
+                "installed in Ollama."
+            ),
+        )
+
     try:
         if request.chat_id:
             chat_record = get_chat(request.chat_id)
@@ -987,7 +1055,7 @@ async def chat(request: ChatRequest):
     )
 
     payload = {
-        "model": ANYA_MODEL,
+        "model": selected_model,
         "messages": messages,
         "tools": TOOL_DEFINITIONS,
         "stream": False,
@@ -1002,7 +1070,7 @@ async def chat(request: ChatRequest):
     prompt_tokens = 0
     response_tokens = 0
     assistant_message = ""
-    response_model = ANYA_MODEL
+    response_model = selected_model
 
     try:
         for iteration in range(MAX_TOOL_ITERATIONS + 1):
@@ -1018,7 +1086,7 @@ async def chat(request: ChatRequest):
 
             response_model = data.get(
                 "model",
-                ANYA_MODEL,
+                selected_model,
             )
 
             total_duration_ns += int(
