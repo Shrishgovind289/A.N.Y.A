@@ -1,5 +1,6 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
+import base64
 import os
 from pathlib import Path
 from typing import Any
@@ -13,6 +14,14 @@ MAX_FILE_CONTENT_CHARS = int(
         "12000",
     )
 )
+
+IMAGE_EXTENSIONS = {
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".webp",
+}
+
 
 TEXT_EXTENSIONS = {
     ".txt",
@@ -106,6 +115,43 @@ def extract_text_file(path: Path) -> str:
         "utf-8",
         errors="replace",
     )
+
+
+def encode_image_file(
+    record: dict[str, Any],
+) -> str:
+    path = Path(record["storage_path"]).resolve()
+
+    if not path.is_file():
+        raise FileContentError(
+            "The stored image could not be found."
+        )
+
+    extension = (
+        record.get("extension")
+        or path.suffix
+    ).lower()
+
+    if extension not in IMAGE_EXTENSIONS:
+        raise FileContentError(
+            "The attachment is not a supported image."
+        )
+
+    try:
+        image_bytes = path.read_bytes()
+    except OSError as exc:
+        raise FileContentError(
+            f"Could not read image: {exc}"
+        ) from exc
+
+    if not image_bytes:
+        raise FileContentError(
+            "The image file is empty."
+        )
+
+    return base64.b64encode(
+        image_bytes
+    ).decode("ascii")
 
 
 def extract_file_content(

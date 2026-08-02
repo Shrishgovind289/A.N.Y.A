@@ -58,7 +58,9 @@ from app.database import (
 )
 
 from app.file_content import (
+    IMAGE_EXTENSIONS,
     FileContentError,
+    encode_image_file,
     extract_file_content,
 )
 
@@ -81,6 +83,63 @@ def public_file_record(
     }
 
 
+DEFAULT_VISION_MODEL = os.getenv(
+    "ANYA_VISION_MODEL",
+    "gemma3:4b",
+)
+
+MAX_CHAT_IMAGES = int(
+    os.getenv(
+        "ANYA_MAX_CHAT_IMAGES",
+        "4",
+    )
+)
+
+
+def model_supports_images(
+    model_name: str,
+) -> bool:
+    normalized_name = model_name.lower()
+
+    return (
+        normalized_name.startswith("gemma3")
+        or normalized_name.startswith("qwen2.5vl")
+    )
+
+
+def build_chat_image_payload(
+    chat_id: str,
+) -> list[str]:
+    images: list[str] = []
+
+    for record in list_chat_files(chat_id):
+        extension = (
+            record.get("extension")
+            or Path(
+                record["storage_path"]
+            ).suffix
+        ).lower()
+
+        if extension not in IMAGE_EXTENSIONS:
+            continue
+
+        try:
+            images.append(
+                encode_image_file(record)
+            )
+        except FileContentError as exc:
+            logger.warning(
+                "Could not encode image %s: %s",
+                record.get("original_name"),
+                exc,
+            )
+
+        if len(images) >= MAX_CHAT_IMAGES:
+            break
+
+    return images
+
+
 MAX_ATTACHMENT_CONTEXT_CHARS = int(
     os.getenv(
         "ANYA_MAX_ATTACHMENT_CONTEXT_CHARS",
@@ -98,6 +157,16 @@ def build_chat_attachment_context(
     )
 
     for record in list_chat_files(chat_id):
+        extension = (
+            record.get("extension")
+            or Path(
+                record["storage_path"]
+            ).suffix
+        ).lower()
+
+        if extension in IMAGE_EXTENSIONS:
+            continue
+
         filename = (
             record.get("original_name")
             or "attachment"
@@ -1014,6 +1083,28 @@ async def chat(request: ChatRequest):
 
     chat_id = chat_record["id"]
 
+    image_payload = build_chat_image_payload(
+        chat_id
+    )
+
+    if (
+        image_payload
+        and not model_supports_images(
+            selected_model
+        )
+    ):
+        if DEFAULT_VISION_MODEL not in installed_models:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "This chat contains images, but "
+                    f"the vision model "
+                    f"'{DEFAULT_VISION_MODEL}' is not installed."
+                ),
+            )
+
+        selected_model = DEFAULT_VISION_MODEL
+
     messages = [
         {
             "role": "system",
@@ -1041,11 +1132,18 @@ async def chat(request: ChatRequest):
             f"{attachment_context}"
         )
 
+    user_model_message = {
+        "role": "user",
+        "content": model_user_message,
+    }
+
+    if image_payload:
+        user_model_message["images"] = (
+            image_payload
+        )
+
     messages.append(
-        {
-            "role": "user",
-            "content": model_user_message,
-        }
+        user_model_message
     )
 
     add_message(
@@ -1057,7 +1155,6 @@ async def chat(request: ChatRequest):
     payload = {
         "model": selected_model,
         "messages": messages,
-        "tools": TOOL_DEFINITIONS,
         "stream": False,
         "keep_alive": KEEP_ALIVE,
         "options": {
@@ -1065,6 +1162,9 @@ async def chat(request: ChatRequest):
             "temperature": TEMPERATURE,
         },
     }
+
+    if not image_payload:
+        payload["tools"] = TOOL_DEFINITIONS
 
     total_duration_ns = 0
     prompt_tokens = 0
