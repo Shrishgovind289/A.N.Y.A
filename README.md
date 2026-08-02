@@ -9,8 +9,7 @@
 </p>
 
 <p align="center">
-  A private, locally hosted AI assistant for home-server monitoring, file access,
-  internet research, and future smart-device integration.
+  A private, locally hosted AI assistant for home-server monitoring, file access, internet research, and future smart-device integration.
 </p>
 
 ---
