@@ -805,3 +805,19 @@ textarea {
         font-size: 0.72rem;
     }
 }
+
+/* Mathematical notation */
+.message-content .katex-display {
+    margin: 0.85rem 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 0.25rem 0;
+}
+
+.message-content .katex {
+    max-width: 100%;
+}
+
+.message-content .katex-display > .katex {
+    text-align: left;
+}
