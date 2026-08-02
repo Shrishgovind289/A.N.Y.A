@@ -265,6 +265,9 @@ function renderProjects() {
     projectList.appendChild(allChatsButton);
 
     for (const project of projects) {
+        const row = document.createElement("div");
+        row.className = "sidebar-item-row";
+
         const button = document.createElement(
             "button"
         );
@@ -272,7 +275,10 @@ function renderProjects() {
         button.type = "button";
         button.className = "sidebar-item";
         button.textContent = project.name;
-        button.title = project.description || project.name;
+        button.title = (
+            project.description
+            || project.name
+        );
 
         if (project.id === selectedProjectId) {
             button.classList.add("active");
@@ -286,7 +292,34 @@ function renderProjects() {
             )
         );
 
-        projectList.appendChild(button);
+        const deleteButton = document.createElement(
+            "button"
+        );
+
+        deleteButton.type = "button";
+        deleteButton.className = (
+            "sidebar-delete-button"
+        );
+        deleteButton.textContent = "×";
+        deleteButton.title = (
+            `Delete project ${project.name}`
+        );
+        deleteButton.setAttribute(
+            "aria-label",
+            `Delete project ${project.name}`
+        );
+
+        deleteButton.addEventListener(
+            "click",
+            () => deleteProject(project)
+        );
+
+        row.append(
+            button,
+            deleteButton
+        );
+
+        projectList.appendChild(row);
     }
 }
 
@@ -305,6 +338,9 @@ function renderChats() {
     }
 
     for (const chat of chats) {
+        const row = document.createElement("div");
+        row.className = "sidebar-item-row";
+
         const button = document.createElement(
             "button"
         );
@@ -323,7 +359,34 @@ function renderChats() {
             () => loadChat(chat.id)
         );
 
-        chatList.appendChild(button);
+        const deleteButton = document.createElement(
+            "button"
+        );
+
+        deleteButton.type = "button";
+        deleteButton.className = (
+            "sidebar-delete-button"
+        );
+        deleteButton.textContent = "×";
+        deleteButton.title = (
+            `Delete chat ${chat.title}`
+        );
+        deleteButton.setAttribute(
+            "aria-label",
+            `Delete chat ${chat.title}`
+        );
+
+        deleteButton.addEventListener(
+            "click",
+            () => deleteChat(chat)
+        );
+
+        row.append(
+            button,
+            deleteButton
+        );
+
+        chatList.appendChild(row);
     }
 }
 
@@ -748,6 +811,107 @@ async function deleteProjectFile(file) {
             "assistant",
             `The file could not be deleted: ${error.message}`
         );
+    }
+}
+
+
+async function deleteProject(project) {
+    const confirmation = window.prompt(
+        `Deleting "${project.name}" permanently removes `
+        + "its chats, resources, and workspace.\n\n"
+        + `Type "${project.name}" to confirm:`
+    );
+
+    if (confirmation !== project.name) {
+        return;
+    }
+
+    try {
+        const currentChat = chats.find(
+            (chat) => chat.id === currentChatId
+        );
+
+        const deletingCurrentWorkspace = (
+            selectedProjectId === project.id
+            || currentChat?.project_id === project.id
+        );
+
+        await apiRequest(
+            `/api/projects/${
+                encodeURIComponent(project.id)
+            }`,
+            {
+                method: "DELETE",
+            }
+        );
+
+        if (deletingCurrentWorkspace) {
+            selectedProjectId = "";
+            selectedProjectLabel = "All Chats";
+            currentChatId = null;
+            selectedFiles = [];
+            projectFiles = [];
+
+            currentProjectName.textContent = (
+                "All Chats"
+            );
+
+            renderAttachmentPreview();
+            renderProjectFiles();
+            showWelcomeMessage();
+        }
+
+        await loadProjects();
+        await loadChats();
+
+        setConnectionStatus(true);
+    } catch (error) {
+        addMessage(
+            "assistant",
+            `I could not delete that project: ${error.message}`
+        );
+
+        setConnectionStatus(false);
+    }
+}
+
+
+async function deleteChat(chat) {
+    const confirmed = window.confirm(
+        `Delete the chat "${chat.title}" permanently?`
+    );
+
+    if (!confirmed) {
+        return;
+    }
+
+    try {
+        await apiRequest(
+            `/api/chats/${
+                encodeURIComponent(chat.id)
+            }`,
+            {
+                method: "DELETE",
+            }
+        );
+
+        if (currentChatId === chat.id) {
+            currentChatId = null;
+            selectedFiles = [];
+            renderAttachmentPreview();
+            showWelcomeMessage();
+        }
+
+        await loadChats();
+
+        setConnectionStatus(true);
+    } catch (error) {
+        addMessage(
+            "assistant",
+            `I could not delete that chat: ${error.message}`
+        );
+
+        setConnectionStatus(false);
     }
 }
 

@@ -38,6 +38,7 @@ from app.tools import get_server_status
 from app.agent_tools import TOOL_DEFINITIONS, execute_tool
 from app.database import (
     CHAT_UPLOADS_DIR,
+    PROJECTS_DIR,
     add_message,
     create_chat,
     create_project,
@@ -47,7 +48,9 @@ from app.database import (
     get_project,
     initialize_database,
     create_file_record,
+    delete_chat_record,
     delete_file_record,
+    delete_project_record,
     list_chat_files,
     list_chats,
     list_projects,
@@ -637,6 +640,55 @@ async def api_delete_file(
     }
 
 
+@app.delete(
+    "/api/projects/{project_id}",
+    dependencies=[Depends(verify_api_key)],
+)
+async def api_delete_project(
+    project_id: str,
+):
+    project = get_project(project_id)
+
+    if project is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Project does not exist.",
+        )
+
+    workspace_path = Path(
+        project["workspace_path"]
+    ).resolve()
+
+    projects_root = PROJECTS_DIR.resolve()
+
+    if not workspace_path.is_relative_to(
+        projects_root
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="Project workspace path is invalid.",
+        )
+
+    deleted = delete_project_record(project_id)
+
+    if not deleted:
+        raise HTTPException(
+            status_code=404,
+            detail="Project does not exist.",
+        )
+
+    if workspace_path.exists():
+        shutil.rmtree(
+            workspace_path,
+            ignore_errors=False,
+        )
+
+    return {
+        "deleted": True,
+        "project_id": project_id,
+    }
+
+
 @app.get(
     "/api/projects",
     dependencies=[Depends(verify_api_key)],
@@ -662,6 +714,68 @@ async def api_create_project(request: ProjectCreateRequest):
             status_code=400,
             detail=str(exc),
         ) from exc
+
+
+@app.delete(
+    "/api/chats/{chat_id}",
+    dependencies=[Depends(verify_api_key)],
+)
+async def api_delete_chat(
+    chat_id: str,
+):
+    chat_record = get_chat(chat_id)
+
+    if chat_record is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Chat does not exist.",
+        )
+
+    chat_storage_root = (
+        CHAT_UPLOADS_DIR
+        / chat_id
+    ).resolve()
+
+    for record in list_chat_files(chat_id):
+        if record.get("project_id") is not None:
+            continue
+
+        file_path = Path(
+            record["storage_path"]
+        ).resolve()
+
+        if not file_path.is_relative_to(
+            chat_storage_root
+        ):
+            raise HTTPException(
+                status_code=403,
+                detail="Chat attachment path is invalid.",
+            )
+
+        if file_path.exists():
+            shutil.rmtree(
+                file_path.parent,
+                ignore_errors=True,
+            )
+
+    deleted = delete_chat_record(chat_id)
+
+    if not deleted:
+        raise HTTPException(
+            status_code=404,
+            detail="Chat does not exist.",
+        )
+
+    if chat_storage_root.exists():
+        shutil.rmtree(
+            chat_storage_root,
+            ignore_errors=True,
+        )
+
+    return {
+        "deleted": True,
+        "chat_id": chat_id,
+    }
 
 
 @app.get(

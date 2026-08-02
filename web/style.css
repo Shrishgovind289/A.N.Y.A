@@ -698,3 +698,46 @@ textarea {
     pointer-events: none;
     stroke-width: 2;
 }
+
+
+/* Sidebar project and chat deletion */
+
+.sidebar-item-row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    width: 100%;
+}
+
+.sidebar-item-row .sidebar-item {
+    flex: 1;
+    min-width: 0;
+}
+
+.sidebar-delete-button {
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: 9px;
+    background: transparent;
+    color: #7f8da1;
+    font-size: 1.15rem;
+    cursor: pointer;
+    opacity: 0.45;
+}
+
+.sidebar-item-row:hover .sidebar-delete-button,
+.sidebar-delete-button:focus-visible {
+    opacity: 1;
+}
+
+.sidebar-delete-button:hover {
+    border-color: rgba(255, 94, 94, 0.3);
+    background: rgba(190, 47, 47, 0.18);
+    color: #ff8585;
+}

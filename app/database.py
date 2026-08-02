@@ -330,6 +330,21 @@ def list_projects() -> list[dict[str, Any]]:
     return [dict(row) for row in rows]
 
 
+def delete_project_record(
+    project_id: str,
+) -> bool:
+    with get_connection() as connection:
+        cursor = connection.execute(
+            """
+            DELETE FROM projects
+            WHERE id = ?
+            """,
+            (project_id,),
+        )
+
+    return cursor.rowcount > 0
+
+
 def create_chat(
     title: str = "New Chat",
     project_id: str | None = None,
@@ -416,6 +431,42 @@ def list_chats(project_id: str | None = None) -> list[dict[str, Any]]:
             ).fetchall()
 
     return [dict(row) for row in rows]
+
+
+def delete_chat_record(
+    chat_id: str,
+) -> bool:
+    with get_connection() as connection:
+        # Keep project resources even when their original chat is deleted.
+        connection.execute(
+            """
+            UPDATE project_files
+            SET chat_id = NULL
+            WHERE chat_id = ?
+              AND project_id IS NOT NULL
+            """,
+            (chat_id,),
+        )
+
+        # Remove records belonging only to a regular chat.
+        connection.execute(
+            """
+            DELETE FROM project_files
+            WHERE chat_id = ?
+              AND project_id IS NULL
+            """,
+            (chat_id,),
+        )
+
+        cursor = connection.execute(
+            """
+            DELETE FROM chats
+            WHERE id = ?
+            """,
+            (chat_id,),
+        )
+
+    return cursor.rowcount > 0
 
 
 def add_message(chat_id: str, role: str, content: str) -> dict[str, Any]:
