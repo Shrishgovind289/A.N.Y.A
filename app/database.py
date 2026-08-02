@@ -11,6 +11,12 @@ from typing import Any
 BASE_DIR = Path(__file__).resolve().parent.parent
 DATA_DIR = Path(os.getenv("ANYA_DATA_DIR", BASE_DIR / "data"))
 PROJECTS_DIR = Path(os.getenv("ANYA_PROJECTS_DIR", BASE_DIR / "projects"))
+CHAT_UPLOADS_DIR = Path(
+    os.getenv(
+        "ANYA_CHAT_UPLOADS_DIR",
+        DATA_DIR / "chat_uploads",
+    )
+)
 DATABASE_PATH = DATA_DIR / "anya.db"
 
 
@@ -22,6 +28,7 @@ def utc_now() -> str:
 def get_connection():
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     PROJECTS_DIR.mkdir(parents=True, exist_ok=True)
+    CHAT_UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 
     connection = sqlite3.connect(DATABASE_PATH)
     connection.row_factory = sqlite3.Row
@@ -38,8 +45,127 @@ def get_connection():
         connection.close()
 
 
+
+def migrate_project_files_table(
+    connection: sqlite3.Connection,
+) -> None:
+    table_row = connection.execute(
+        """
+        SELECT name
+        FROM sqlite_master
+        WHERE type = 'table'
+          AND name = 'project_files'
+        """
+    ).fetchone()
+
+    if table_row is None:
+        return
+
+    columns = {
+        row["name"]: row
+        for row in connection.execute(
+            "PRAGMA table_info(project_files)"
+        ).fetchall()
+    }
+
+    project_id_column = columns.get("project_id")
+
+    migration_needed = (
+        "chat_id" not in columns
+        or project_id_column is None
+        or int(project_id_column["notnull"]) != 0
+    )
+
+    if not migration_needed:
+        return
+
+    connection.execute(
+        """
+        CREATE TABLE project_files_migration (
+            id TEXT PRIMARY KEY,
+            project_id TEXT,
+            chat_id TEXT,
+            original_name TEXT NOT NULL,
+            stored_name TEXT NOT NULL,
+            extension TEXT NOT NULL,
+            content_type TEXT NOT NULL,
+            size_bytes INTEGER NOT NULL,
+            sha256 TEXT NOT NULL,
+            scan_status TEXT NOT NULL,
+            scan_details TEXT NOT NULL DEFAULT '',
+            storage_path TEXT NOT NULL UNIQUE,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (project_id)
+                REFERENCES projects(id)
+                ON DELETE CASCADE,
+            FOREIGN KEY (chat_id)
+                REFERENCES chats(id)
+                ON DELETE CASCADE,
+            CHECK (
+                project_id IS NOT NULL
+                OR chat_id IS NOT NULL
+            )
+        )
+        """
+    )
+
+    chat_id_expression = (
+        "chat_id"
+        if "chat_id" in columns
+        else "NULL"
+    )
+
+    connection.execute(
+        f"""
+        INSERT INTO project_files_migration (
+            id,
+            project_id,
+            chat_id,
+            original_name,
+            stored_name,
+            extension,
+            content_type,
+            size_bytes,
+            sha256,
+            scan_status,
+            scan_details,
+            storage_path,
+            created_at
+        )
+        SELECT
+            id,
+            project_id,
+            {chat_id_expression},
+            original_name,
+            stored_name,
+            extension,
+            content_type,
+            size_bytes,
+            sha256,
+            scan_status,
+            scan_details,
+            storage_path,
+            created_at
+        FROM project_files
+        """
+    )
+
+    connection.execute(
+        "DROP TABLE project_files"
+    )
+
+    connection.execute(
+        """
+        ALTER TABLE project_files_migration
+        RENAME TO project_files
+        """
+    )
+
+
 def initialize_database() -> None:
     with get_connection() as connection:
+        migrate_project_files_table(connection)
+
         connection.executescript(
             """
             CREATE TABLE IF NOT EXISTS projects (
@@ -77,7 +203,8 @@ def initialize_database() -> None:
 
             CREATE TABLE IF NOT EXISTS project_files (
                 id TEXT PRIMARY KEY,
-                project_id TEXT NOT NULL,
+                project_id TEXT,
+                chat_id TEXT,
                 original_name TEXT NOT NULL,
                 stored_name TEXT NOT NULL,
                 extension TEXT NOT NULL,
@@ -90,11 +217,21 @@ def initialize_database() -> None:
                 created_at TEXT NOT NULL,
                 FOREIGN KEY (project_id)
                     REFERENCES projects(id)
-                    ON DELETE CASCADE
+                    ON DELETE CASCADE,
+                FOREIGN KEY (chat_id)
+                    REFERENCES chats(id)
+                    ON DELETE CASCADE,
+                CHECK (
+                    project_id IS NOT NULL
+                    OR chat_id IS NOT NULL
+                )
             );
 
             CREATE INDEX IF NOT EXISTS idx_project_files_project_id
                 ON project_files(project_id);
+
+            CREATE INDEX IF NOT EXISTS idx_project_files_chat_id
+                ON project_files(chat_id);
 
 
             CREATE INDEX IF NOT EXISTS idx_chats_project_id
@@ -369,6 +506,7 @@ def create_file_record(
             INSERT INTO project_files (
                 id,
                 project_id,
+                chat_id,
                 original_name,
                 stored_name,
                 extension,
@@ -380,11 +518,12 @@ def create_file_record(
                 storage_path,
                 created_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 metadata["id"],
-                metadata["project_id"],
+                metadata.get("project_id"),
+                metadata.get("chat_id"),
                 metadata["original_name"],
                 metadata["stored_name"],
                 metadata["extension"],
@@ -410,6 +549,7 @@ def get_file_record(
             SELECT
                 id,
                 project_id,
+                chat_id,
                 original_name,
                 stored_name,
                 extension,
@@ -438,6 +578,7 @@ def list_project_files(
             SELECT
                 id,
                 project_id,
+                chat_id,
                 original_name,
                 stored_name,
                 extension,
@@ -453,6 +594,37 @@ def list_project_files(
             ORDER BY created_at DESC
             """,
             (project_id,),
+        ).fetchall()
+
+    return [dict(row) for row in rows]
+
+
+
+def list_chat_files(
+    chat_id: str,
+) -> list[dict[str, Any]]:
+    with get_connection() as connection:
+        rows = connection.execute(
+            """
+            SELECT
+                id,
+                project_id,
+                chat_id,
+                original_name,
+                stored_name,
+                extension,
+                content_type,
+                size_bytes,
+                sha256,
+                scan_status,
+                scan_details,
+                storage_path,
+                created_at
+            FROM project_files
+            WHERE chat_id = ?
+            ORDER BY created_at DESC
+            """,
+            (chat_id,),
         ).fetchall()
 
     return [dict(row) for row in rows]

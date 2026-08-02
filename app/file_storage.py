@@ -7,7 +7,7 @@ import uuid
 from pathlib import Path
 from typing import Any
 
-from app.database import get_project
+from app.database import CHAT_UPLOADS_DIR, get_project
 
 
 MAX_UPLOAD_BYTES = int(
@@ -158,15 +158,24 @@ def scan_file(file_path: Path) -> dict[str, Any]:
 
 
 def store_scanned_file(
-    project_id: str,
+    chat_id: str,
+    project_id: str | None,
     temporary_path: Path,
     original_filename: str,
     content_type: str | None,
 ) -> dict[str, Any]:
-    project = get_project(project_id)
+    clean_chat_id = chat_id.strip()
 
-    if project is None:
-        raise UploadError("Project does not exist.")
+    if not clean_chat_id:
+        raise UploadError("Chat ID is required.")
+
+    project = None
+
+    if project_id is not None:
+        project = get_project(project_id)
+
+        if project is None:
+            raise UploadError("Project does not exist.")
 
     safe_filename = sanitize_filename(
         original_filename
@@ -197,13 +206,19 @@ def store_scanned_file(
 
     file_id = str(uuid.uuid4())
 
-    workspace_path = Path(
-        project["workspace_path"]
-    ).resolve()
+    if project is not None:
+        storage_root = (
+            Path(project["workspace_path"]).resolve()
+            / "uploads"
+        )
+    else:
+        storage_root = (
+            CHAT_UPLOADS_DIR.resolve()
+            / clean_chat_id
+        )
 
     upload_directory = (
-        workspace_path
-        / "uploads"
+        storage_root
         / file_id
     )
 
@@ -225,6 +240,7 @@ def store_scanned_file(
     return {
         "id": file_id,
         "project_id": project_id,
+        "chat_id": clean_chat_id,
         "original_name": original_filename,
         "stored_name": safe_filename,
         "extension": extension,
