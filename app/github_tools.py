@@ -489,7 +489,7 @@ def list_github_issues(
 
 def list_github_pull_requests(
     repository: str,
-    state: str = "open",
+    state: str = "all",
     max_results: int = 20,
 ) -> dict:
     repository = _validate_repository(
