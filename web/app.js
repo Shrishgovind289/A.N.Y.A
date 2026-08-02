@@ -59,6 +59,17 @@ let projectFiles = [];
 let selectedFiles = [];
 let fileOperationInProgress = false;
 
+const DEFAULT_VISION_MODEL = "gemma3:4b";
+
+const IMAGE_FILE_EXTENSIONS = new Set(
+    [
+        ".png",
+        ".jpg",
+        ".jpeg",
+        ".webp",
+    ]
+);
+
 
 function requestApiKey() {
     const enteredKey = window.prompt(
@@ -602,6 +613,47 @@ async function loadProjectFiles() {
 }
 
 
+function isImageAttachment(file) {
+    if (file.type?.startsWith("image/")) {
+        return true;
+    }
+
+    const filename = file.name.toLowerCase();
+    const extensionIndex = filename.lastIndexOf(".");
+
+    if (extensionIndex < 0) {
+        return false;
+    }
+
+    return IMAGE_FILE_EXTENSIONS.has(
+        filename.slice(extensionIndex)
+    );
+}
+
+
+function switchToVisionModel() {
+    const visionOption = Array.from(
+        modelSelector.options
+    ).find(
+        (option) => (
+            option.value === DEFAULT_VISION_MODEL
+        )
+    );
+
+    if (!visionOption) {
+        return;
+    }
+
+    selectedModel = DEFAULT_VISION_MODEL;
+    modelSelector.value = DEFAULT_VISION_MODEL;
+
+    localStorage.setItem(
+        "anya_selected_model",
+        selectedModel
+    );
+}
+
+
 function selectAttachmentFiles() {
     const incomingFiles = Array.from(
         projectFileInput.files
@@ -620,6 +672,14 @@ function selectAttachmentFiles() {
         if (!alreadySelected) {
             selectedFiles.push(file);
         }
+    }
+
+    const containsImage = incomingFiles.some(
+        isImageAttachment
+    );
+
+    if (containsImage) {
+        switchToVisionModel();
     }
 
     projectFileInput.value = "";
