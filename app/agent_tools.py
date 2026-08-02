@@ -381,7 +381,7 @@ TOOL_DEFINITIONS = [
                             "closed",
                             "all",
                         ],
-                        "default": "open",
+                        "default": "all",
                     },
                     "max_results": {
                         "type": "integer",
@@ -542,7 +542,7 @@ def execute_tool(
             ),
             state=arguments.get(
                 "state",
-                "open",
+                "all",
             ),
             max_results=arguments.get(
                 "max_results",
