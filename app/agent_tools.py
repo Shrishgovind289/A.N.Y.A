@@ -1,6 +1,15 @@
 from typing import Any
 
 from app.filesystem_tools import list_directory, read_file
+from app.github_tools import (
+    list_github_branches,
+    list_github_commits,
+    list_github_directory,
+    list_github_issues,
+    list_github_pull_requests,
+    list_github_repositories,
+    read_github_file,
+)
 from app.internet_tools import fetch_webpage, web_search
 from app.tools import get_gpu_status, get_server_status, get_system_health_report
 
@@ -168,6 +177,224 @@ TOOL_DEFINITIONS = [
         },
     },
 
+
+    {
+        "type": "function",
+        "function": {
+            "name": "list_github_repositories",
+            "description": (
+                "List GitHub repositories accessible through A.N.Y.A's "
+                "configured read-only GitHub token."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "max_results": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 100,
+                        "default": 20,
+                    },
+                },
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "list_github_branches",
+            "description": (
+                "List branches in an accessible GitHub repository."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "repository": {
+                        "type": "string",
+                        "description": "Repository in owner/name format.",
+                    },
+                    "max_results": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 100,
+                        "default": 30,
+                    },
+                },
+                "required": ["repository"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "list_github_directory",
+            "description": (
+                "List files and directories at a path in an accessible "
+                "GitHub repository."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "repository": {
+                        "type": "string",
+                        "description": "Repository in owner/name format.",
+                    },
+                    "path": {
+                        "type": "string",
+                        "description": (
+                            "Repository-relative directory path. "
+                            "Use an empty string for the root."
+                        ),
+                        "default": "",
+                    },
+                    "ref": {
+                        "type": "string",
+                        "description": (
+                            "Optional branch, tag, or commit SHA."
+                        ),
+                        "default": "",
+                    },
+                },
+                "required": ["repository"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "read_github_file",
+            "description": (
+                "Read a UTF-8 text file from an accessible GitHub "
+                "repository. This tool is read-only."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "repository": {
+                        "type": "string",
+                        "description": "Repository in owner/name format.",
+                    },
+                    "path": {
+                        "type": "string",
+                        "description": "Repository-relative file path.",
+                    },
+                    "ref": {
+                        "type": "string",
+                        "description": (
+                            "Optional branch, tag, or commit SHA."
+                        ),
+                        "default": "",
+                    },
+                },
+                "required": [
+                    "repository",
+                    "path",
+                ],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "list_github_commits",
+            "description": (
+                "List recent commits from an accessible GitHub repository."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "repository": {
+                        "type": "string",
+                        "description": "Repository in owner/name format.",
+                    },
+                    "ref": {
+                        "type": "string",
+                        "description": (
+                            "Optional branch, tag, or commit SHA."
+                        ),
+                        "default": "",
+                    },
+                    "max_results": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 50,
+                        "default": 10,
+                    },
+                },
+                "required": ["repository"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "list_github_issues",
+            "description": (
+                "List issues from an accessible GitHub repository."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "repository": {
+                        "type": "string",
+                        "description": "Repository in owner/name format.",
+                    },
+                    "state": {
+                        "type": "string",
+                        "enum": [
+                            "open",
+                            "closed",
+                            "all",
+                        ],
+                        "default": "open",
+                    },
+                    "max_results": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 50,
+                        "default": 20,
+                    },
+                },
+                "required": ["repository"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "list_github_pull_requests",
+            "description": (
+                "List pull requests from an accessible GitHub repository."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "repository": {
+                        "type": "string",
+                        "description": "Repository in owner/name format.",
+                    },
+                    "state": {
+                        "type": "string",
+                        "enum": [
+                            "open",
+                            "closed",
+                            "all",
+                        ],
+                        "default": "open",
+                    },
+                    "max_results": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 50,
+                        "default": 20,
+                    },
+                },
+                "required": ["repository"],
+            },
+        },
+    },
+
 ]
 
 
@@ -221,6 +448,106 @@ def execute_tool(
     if tool_name == "fetch_webpage":
         return fetch_webpage(
             url=arguments.get("url", ""),
+        )
+
+    if tool_name == "list_github_repositories":
+        return list_github_repositories(
+            max_results=arguments.get(
+                "max_results",
+                20,
+            ),
+        )
+
+    if tool_name == "list_github_branches":
+        return list_github_branches(
+            repository=arguments.get(
+                "repository",
+                "",
+            ),
+            max_results=arguments.get(
+                "max_results",
+                30,
+            ),
+        )
+
+    if tool_name == "list_github_directory":
+        return list_github_directory(
+            repository=arguments.get(
+                "repository",
+                "",
+            ),
+            path=arguments.get(
+                "path",
+                "",
+            ),
+            ref=arguments.get(
+                "ref",
+                "",
+            ),
+        )
+
+    if tool_name == "read_github_file":
+        return read_github_file(
+            repository=arguments.get(
+                "repository",
+                "",
+            ),
+            path=arguments.get(
+                "path",
+                "",
+            ),
+            ref=arguments.get(
+                "ref",
+                "",
+            ),
+        )
+
+    if tool_name == "list_github_commits":
+        return list_github_commits(
+            repository=arguments.get(
+                "repository",
+                "",
+            ),
+            ref=arguments.get(
+                "ref",
+                "",
+            ),
+            max_results=arguments.get(
+                "max_results",
+                10,
+            ),
+        )
+
+    if tool_name == "list_github_issues":
+        return list_github_issues(
+            repository=arguments.get(
+                "repository",
+                "",
+            ),
+            state=arguments.get(
+                "state",
+                "open",
+            ),
+            max_results=arguments.get(
+                "max_results",
+                20,
+            ),
+        )
+
+    if tool_name == "list_github_pull_requests":
+        return list_github_pull_requests(
+            repository=arguments.get(
+                "repository",
+                "",
+            ),
+            state=arguments.get(
+                "state",
+                "open",
+            ),
+            max_results=arguments.get(
+                "max_results",
+                20,
+            ),
         )
 
     raise ValueError(
