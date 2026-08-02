@@ -1,4 +1,4 @@
-﻿const messagesContainer = document.getElementById("messages");
+const messagesContainer = document.getElementById("messages");
 const messageInput = document.getElementById("message-input");
 const sendButton = document.getElementById("send-button");
 const connectionStatus = document.getElementById(
@@ -9,6 +9,10 @@ const projectList = document.getElementById("project-list");
 const chatList = document.getElementById("chat-list");
 const currentProjectName = document.getElementById(
     "current-project-name"
+);
+
+const modelSelector = document.getElementById(
+    "model-selector"
 );
 
 const newProjectButton = document.getElementById(
@@ -42,6 +46,9 @@ const projectFileList = document.getElementById(
 );
 
 let apiKey = sessionStorage.getItem("anya_api_key") || "";
+let selectedModel = localStorage.getItem(
+    "anya_selected_model"
+) || "";
 let requestInProgress = false;
 let selectedProjectId = "";
 let selectedProjectLabel = "All Chats";
@@ -211,6 +218,10 @@ function setRequestState(isLoading) {
     messageInput.disabled = isLoading;
     newChatButton.disabled = isLoading;
     newProjectButton.disabled = isLoading;
+    modelSelector.disabled = (
+        isLoading
+        || modelSelector.options.length === 0
+    );
 
     sendButton.textContent = (
         isLoading
@@ -916,6 +927,61 @@ async function deleteChat(chat) {
 }
 
 
+async function loadModels() {
+    const data = await apiRequest(
+        "/api/models"
+    );
+
+    const installedModels = data.models || [];
+
+    modelSelector.innerHTML = "";
+
+    if (installedModels.length === 0) {
+        const option = document.createElement(
+            "option"
+        );
+
+        option.value = "";
+        option.textContent = "No models installed";
+
+        modelSelector.appendChild(option);
+        modelSelector.disabled = true;
+        selectedModel = "";
+        return;
+    }
+
+    for (const modelName of installedModels) {
+        const option = document.createElement(
+            "option"
+        );
+
+        option.value = modelName;
+        option.textContent = modelName;
+
+        modelSelector.appendChild(option);
+    }
+
+    const defaultModel = data.default_model || "";
+
+    if (installedModels.includes(selectedModel)) {
+        modelSelector.value = selectedModel;
+    } else if (installedModels.includes(defaultModel)) {
+        selectedModel = defaultModel;
+        modelSelector.value = defaultModel;
+    } else {
+        selectedModel = installedModels[0];
+        modelSelector.value = selectedModel;
+    }
+
+    localStorage.setItem(
+        "anya_selected_model",
+        selectedModel
+    );
+
+    modelSelector.disabled = requestInProgress;
+}
+
+
 async function loadProjects() {
     const data = await apiRequest(
         "/api/projects"
@@ -1088,6 +1154,7 @@ async function checkConnection() {
 
 async function initializeWorkspace() {
     try {
+        await loadModels();
         await loadProjects();
         await loadChats();
         setConnectionStatus(true);
@@ -1194,6 +1261,10 @@ async function sendMessage() {
                             selectedProjectId
                             || null
                         ),
+                        model: (
+                            selectedModel
+                            || null
+                        ),
                     }
                 ),
             }
@@ -1224,6 +1295,19 @@ async function sendMessage() {
         setRequestState(false);
     }
 }
+
+
+modelSelector.addEventListener(
+    "change",
+    () => {
+        selectedModel = modelSelector.value;
+
+        localStorage.setItem(
+            "anya_selected_model",
+            selectedModel
+        );
+    }
+);
 
 
 sendButton.addEventListener(
