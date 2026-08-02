@@ -523,6 +523,10 @@ def list_github_pull_requests(
     pull_requests = []
 
     for record in records:
+        merged_at = record.get(
+            "merged_at"
+        )
+
         pull_requests.append(
             {
                 "number": record.get(
@@ -534,6 +538,8 @@ def list_github_pull_requests(
                 "state": record.get(
                     "state"
                 ),
+                "merged": bool(merged_at),
+                "merged_at": merged_at,
                 "draft": record.get(
                     "draft"
                 ),
@@ -558,5 +564,7 @@ def list_github_pull_requests(
     return {
         "repository": repository,
         "state": state,
+        "requested_max_results": max_results,
+        "result_count": len(pull_requests),
         "pull_requests": pull_requests,
     }
