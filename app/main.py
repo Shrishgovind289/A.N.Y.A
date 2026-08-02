@@ -336,6 +336,9 @@ When reporting tool results:
 - A requested maximum is a limit, not a required result count.
 - If fewer records are returned than requested, clearly state the exact number
   returned and do not fill the remaining positions.
+- When a GitHub tool returns result_count or result_summary, treat those fields
+  as authoritative. Never describe the requested maximum as the number actually
+  returned.
 
 You also have these internet tools:
 - web_search: searches the public internet and returns result titles, URLs,

@@ -561,10 +561,17 @@ def list_github_pull_requests(
             }
         )
 
+    result_count = len(pull_requests)
+
     return {
         "repository": repository,
         "state": state,
         "requested_max_results": max_results,
-        "result_count": len(pull_requests),
+        "result_count": result_count,
+        "result_summary": (
+            f"GitHub returned exactly {result_count} "
+            f"pull request{'s' if result_count != 1 else ''}. "
+            f"The requested maximum was {max_results}."
+        ),
         "pull_requests": pull_requests,
     }
