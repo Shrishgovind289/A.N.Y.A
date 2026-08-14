@@ -36,6 +36,10 @@ load_dotenv(ENV_PATH)
 
 from app.tools import get_server_status
 from app.agent_tools import TOOL_DEFINITIONS, execute_tool
+from app.factual_verification import (
+    build_verification_query,
+    should_auto_verify,
+)
 from app.database import (
     CHAT_UPLOADS_DIR,
     PROJECTS_DIR,
@@ -1139,6 +1143,51 @@ async def chat(request: ChatRequest):
         messages.append(item)
 
     model_user_message = request.message
+
+    if should_auto_verify(request.message):
+        verification_query = build_verification_query(
+            request.message,
+            history_items,
+        )
+
+        try:
+            verification_result = execute_tool(
+                "web_search",
+                {
+                    "query": verification_query,
+                    "max_results": 5,
+                },
+            )
+
+            model_user_message = (
+                f"{model_user_message}\n\n"
+                "===== Automatic factual verification =====\n"
+                "The backend performed a web search because "
+                "this request is a factual lookup or challenges "
+                "an earlier factual answer. Treat the following "
+                "search results as grounding evidence. Do not "
+                "guess or contradict them without evidence. "
+                "If the results are insufficient or conflicting, "
+                "say that clearly instead of inventing an answer.\n\n"
+                f"{json.dumps(verification_result, default=str)}"
+            )
+
+            logger.info(
+                "Automatic factual verification search: %s",
+                verification_query,
+            )
+
+        except Exception:
+            logger.exception(
+                "Automatic factual verification failed"
+            )
+
+            model_user_message = (
+                f"{model_user_message}\n\n"
+                "Automatic factual verification was attempted "
+                "but failed. Do not fabricate an answer. If you "
+                "are uncertain, say so and offer to verify it."
+            )
 
     attachment_context = (
         build_chat_attachment_context(chat_id)
