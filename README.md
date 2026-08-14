@@ -1,4 +1,4 @@
-﻿<p align="center">
+<p align="center">
   <img src="web/anya-logo.png" alt="A.N.Y.A logo" width="140">
 </p>
 
@@ -25,35 +25,47 @@ A.N.Y.A is designed to remain private, lightweight, extensible, and accessible f
 ## Features
 
 - Local AI inference through Ollama
-- FastAPI-based backend
-- Responsive desktop and mobile web interface
-- API-key authentication
-- Multi-turn conversation support
+- Runtime model switching
+- Multi-turn persistent chat history
+- Project-based chat organization
+- Secure file uploads with ClamAV scanning
+- Text and PDF content extraction
+- Image analysis through vision-capable models
+- Automatic vision-model routing
 - Server CPU, memory, disk, and uptime monitoring
 - NVIDIA GPU monitoring
-- Read-only filesystem tools
-- Configurable allowed and denied paths
+- Combined system health reporting
+- Read-only filesystem access with path restrictions
 - Public web search
 - Public webpage content extraction
-- Protection against local-network webpage requests
-- Configurable response length and temperature
-- Automatic startup through systemd
+- Automatic factual verification for factual questions and corrections
+- Read-only GitHub repository access
+- GitHub branches, files, commits, issues, and pull requests
+- KaTeX mathematical expression rendering
+- API-key authentication
+- Responsive desktop and mobile web interface
 - Tailscale-compatible remote access
+- Automatic startup through systemd
 
 ## Technology Stack
 
 | Component | Technology |
 |---|---|
-| AI model | Qwen 2.5 3B |
-| Model runtime | Ollama |
-| Backend | Python and FastAPI |
-| Web server | Uvicorn |
-| Frontend | HTML, CSS, and JavaScript |
+| Local AI runtime | Ollama |
+| Default model | Qwen 2.5 3B |
+| Backend | Python + FastAPI |
+| API server | Uvicorn |
+| Frontend | HTML, CSS, JavaScript |
+| Database | SQLite |
 | Authentication | API key |
 | Remote access | Tailscale |
-| Hardware monitoring | psutil and NVIDIA SMI |
+| Hardware monitoring | psutil + NVIDIA SMI |
 | Web search | DDGS |
-| Web extraction | HTTPX and Beautiful Soup |
+| Web extraction | HTTPX + Beautiful Soup |
+| PDF extraction | pypdf |
+| Malware scanning | ClamAV |
+| GitHub access | GitHub REST API |
+| Math rendering | KaTeX |
 
 ## Project Structure
 
