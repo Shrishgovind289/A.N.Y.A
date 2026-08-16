@@ -40,6 +40,9 @@ from app.factual_verification import (
     build_verification_query,
     should_auto_verify,
 )
+from app.tool_relevance import (
+    is_tool_call_relevant,
+)
 from app.database import (
     CHAT_UPLOADS_DIR,
     PROJECTS_DIR,
@@ -278,6 +281,23 @@ Behavior:
 - Prefer clear step-by-step instructions for technical work.
 - Anticipate useful next steps without overwhelming the user.
 - Clearly distinguish facts, assumptions, and recommendations.
+- Treat follow-up messages as continuations of the recent conversation.
+- Preserve explicit user constraints from earlier messages, including location,
+  distance, budget, quantity, travel mode, dates, and requested category,
+  unless the user explicitly changes them.
+- Resolve phrases such as "as specified", "same", "top 5", "anything in
+  between", "what about", and similar follow-ups using recent conversation
+  context instead of treating them as standalone requests.
+- Never silently broaden or discard a user's geographic constraint. If the
+  user asks for ideas around Jersey City, subsequent recommendations must
+  remain relevant to Jersey City unless the user changes the location.
+- Only call a tool when its output is directly relevant to the user's current
+  request or the active conversation topic.
+- Never call server, GPU, filesystem, or GitHub tools merely because they are
+  available.
+- If a web search fails, do not replace the requested location or constraints
+  with unrelated examples. Retry with a more appropriate query or clearly
+  state the limitation while preserving the original request.
 - Never claim an action was completed unless a tool result confirms it.
 - Never invent server status, command output, file contents, or internet data.
 - CPU measurements taken during a request may include ANYA and Ollama activity.
@@ -1317,33 +1337,59 @@ async def chat(request: ChatRequest):
                         else {}
                     )
 
-                try:
-                    result = execute_tool(
-                        tool_name,
-                        arguments,
-                    )
-
-                    tool_content = json.dumps(
-                        result,
-                        default=str,
-                    )
-
-                    logger.info(
-                        "Executed tool: %s",
-                        tool_name,
-                    )
-
-                except Exception as exc:
-                    logger.exception(
-                        "Tool execution failed: %s",
+                if not is_tool_call_relevant(
+                    tool_name,
+                    request.message,
+                    history_items,
+                ):
+                    logger.warning(
+                        "Blocked irrelevant tool call: %s",
                         tool_name,
                     )
 
                     tool_content = json.dumps(
                         {
-                            "error": str(exc),
+                            "error": (
+                                "Tool call blocked because it is "
+                                "not relevant to the user's current "
+                                "request or recent conversation."
+                            ),
+                            "instruction": (
+                                "Answer the user's actual request. "
+                                "Do not report server or hardware "
+                                "status unless the user asked about it."
+                            ),
                         }
                     )
+
+                else:
+                    try:
+                        result = execute_tool(
+                            tool_name,
+                            arguments,
+                        )
+
+                        tool_content = json.dumps(
+                            result,
+                            default=str,
+                        )
+
+                        logger.info(
+                            "Executed tool: %s",
+                            tool_name,
+                        )
+
+                    except Exception as exc:
+                        logger.exception(
+                            "Tool execution failed: %s",
+                            tool_name,
+                        )
+
+                        tool_content = json.dumps(
+                            {
+                                "error": str(exc),
+                            }
+                        )
 
                 messages.append(
                     {
