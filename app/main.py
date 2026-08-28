@@ -228,6 +228,10 @@ MAX_OUTPUT_TOKENS = int(
     os.getenv("ANYA_MAX_OUTPUT_TOKENS", "1024")
 )
 
+CONTEXT_TOKENS = int(
+    os.getenv("ANYA_CONTEXT_TOKENS", "8192")
+)
+
 TEMPERATURE = float(
     os.getenv("ANYA_TEMPERATURE", "0.4")
 )
@@ -1251,6 +1255,7 @@ async def chat(request: ChatRequest):
         "keep_alive": KEEP_ALIVE,
         "options": {
             "num_predict": MAX_OUTPUT_TOKENS,
+            "num_ctx": CONTEXT_TOKENS,
             "temperature": TEMPERATURE,
         },
     }
