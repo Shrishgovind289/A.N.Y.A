@@ -729,7 +729,7 @@ function selectAttachmentFiles() {
 }
 
 
-async function ensureChatForAttachments(message) {
+async function ensureChat(message) {
     if (currentChatId) {
         return currentChatId;
     }
@@ -1308,13 +1308,13 @@ async function sendMessage() {
     setRequestState(true);
 
     try {
+        const chatId = await ensureChat(
+            message
+        );
+
         let uploadedFiles = [];
 
         if (hasAttachments) {
-            const chatId = await ensureChatForAttachments(
-                message
-            );
-
             uploadedFiles = await uploadPendingFiles(
                 chatId
             );
@@ -1358,7 +1358,7 @@ async function sendMessage() {
                 body: JSON.stringify(
                     {
                         message: modelMessage,
-                        chat_id: currentChatId,
+                        chat_id: chatId,
                         project_id: (
                             selectedProjectId
                             || null
