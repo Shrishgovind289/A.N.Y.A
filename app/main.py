@@ -1278,6 +1278,25 @@ async def chat(request: ChatRequest):
                 json=payload,
             )
 
+            if (
+                response.status_code == 400
+                and "tools" in payload
+                and "does not support tools"
+                in response.text.lower()
+            ):
+                logger.info(
+                    "Model %s does not support tools; "
+                    "retrying without tools",
+                    selected_model,
+                )
+
+                payload.pop("tools", None)
+
+                response = await app.state.ollama.post(
+                    f"{OLLAMA_URL}/api/chat",
+                    json=payload,
+                )
+
             response.raise_for_status()
             data = response.json()
 
