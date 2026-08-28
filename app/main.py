@@ -43,6 +43,7 @@ from app.factual_verification import (
 from app.tool_relevance import (
     is_tool_call_relevant,
 )
+
 from app.database import (
     CHAT_UPLOADS_DIR,
     PROJECTS_DIR,
@@ -64,6 +65,13 @@ from app.database import (
     list_project_files,
 )
 
+from app.learning_store import (
+    learning_store_init,
+    learning_store_add,
+    learning_store_get_lessons,
+    learning_store_get_model_stats,
+)
+
 from app.file_content import (
     IMAGE_EXTENSIONS,
     FileContentError,
@@ -77,6 +85,12 @@ from app.file_storage import (
     ScannerUnavailableError,
     UploadError,
     store_scanned_file,
+)
+
+from app.task_router import (
+    TaskType,
+    classify_task,
+    select_model_for_task,
 )
 
 
@@ -419,6 +433,30 @@ class ChatResponse(BaseModel):
     response_tokens: int | None = None
     total_duration_ms: float | None = None
 
+class LearningFeedbackRequest(BaseModel):
+    prompt: str = Field(
+        min_length=1,
+        max_length=20_000,
+    )
+
+    task_type: str = Field(
+        min_length=1,
+        max_length=100,
+    )
+
+    model_used: str = Field(
+        min_length=1,
+        max_length=200,
+    )
+
+    answer: str | None = None
+    is_correct: bool
+
+    mistake: str | None = None
+    corrected_answer: str | None = None
+    lesson: str | None = None
+    verification_method: str | None = None
+
 
 class ProjectCreateRequest(BaseModel):
     name: str = Field(
@@ -470,6 +508,7 @@ async def verify_api_key(
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     initialize_database()
+    learning_store_init()
 
     timeout = httpx.Timeout(
         connect=10.0,
@@ -578,6 +617,30 @@ async def api_models():
     return {
         "default_model": ANYA_MODEL,
         "models": installed_models,
+    }
+
+@app.post(
+    "/api/learning/feedback",
+    dependencies=[Depends(verify_api_key)],
+)
+async def api_learning_feedback(
+    request: LearningFeedbackRequest,
+):
+    record_id = learning_store_add(
+        prompt=request.prompt,
+        task_type=request.task_type,
+        model_used=request.model_used,
+        answer=request.answer,
+        is_correct=request.is_correct,
+        mistake=request.mistake,
+        corrected_answer=request.corrected_answer,
+        lesson=request.lesson,
+        verification_method=request.verification_method,
+    )
+
+    return {
+        "saved": True,
+        "record_id": record_id,
     }
 
 
@@ -1156,12 +1219,57 @@ async def chat(request: ChatRequest):
 
         selected_model = DEFAULT_VISION_MODEL
 
+    task_type = classify_task(
+        request.message,
+        has_images=bool(image_payload),
+    )
+
+    model_stats = learning_store_get_model_stats(
+        task_type.value,
+    )
+
+    selected_model = select_model_for_task(
+        task_type,
+        installed_models,
+        selected_model,
+        model_stats=model_stats,
+    )
+
+    relevant_lessons = learning_store_get_lessons(
+        task_type.value,
+        limit=5,
+    )
+
     messages = [
         {
             "role": "system",
             "content": SYSTEM_PROMPT,
         }
     ]
+
+    if relevant_lessons:
+        lesson_text = "\n\n".join(
+            (
+                f"Previous mistake: {item['mistake']}\n"
+                f"Lesson: {item['lesson']}\n"
+                f"Corrected answer: "
+                f"{item['corrected_answer'] or 'Not provided'}"
+            )
+            for item in relevant_lessons
+        )
+
+        messages.append(
+            {
+                "role": "system",
+                "content": (
+                    "===== Relevant lessons from previous mistakes =====\n"
+                    "Use these lessons to avoid repeating previously "
+                    "identified errors. Apply them only when relevant "
+                    "to the current request.\n\n"
+                    f"{lesson_text}"
+                ),
+            }
+        )
 
     for item in history_items[-20:]:
         messages.append(item)
