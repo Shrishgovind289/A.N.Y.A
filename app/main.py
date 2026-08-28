@@ -225,11 +225,11 @@ OLLAMA_URL = os.getenv(
 ).rstrip("/")
 
 MAX_OUTPUT_TOKENS = int(
-    os.getenv("ANYA_MAX_OUTPUT_TOKENS", "1024")
+    os.getenv("ANYA_MAX_OUTPUT_TOKENS", "4096")
 )
 
 CONTEXT_TOKENS = int(
-    os.getenv("ANYA_CONTEXT_TOKENS", "8192")
+    os.getenv("ANYA_CONTEXT_TOKENS", "16384")
 )
 
 TEMPERATURE = float(
@@ -473,7 +473,7 @@ async def lifespan(app: FastAPI):
 
     timeout = httpx.Timeout(
         connect=10.0,
-        read=300.0,
+        read=1200.0,
         write=30.0,
         pool=10.0,
     )
